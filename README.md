@@ -6,7 +6,7 @@ Independent, browser-first web client for **[guillaumemeyer/watermarks-remover](
 - **Optionally drives the upstream Python service** (`server.py`) for everything else — PDF, DOCX, ODT, full HTML/SVG/Markdown container cleaning, and pixel-domain backends.
 - The JavaScript engines are **line-for-line ports of upstream's `text_unicode.py` and `image_meta.py`**, and a parity test suite asserts identical output (same characters kept/stripped, same bytes out of the image parsers).
 
-Live demo: `https://ivanusto.github.io/watermarks-remover-web/` · Local: open `index.html` or run `python3 serve_local.py`.
+Live demo: [https://ivanusto.github.io/watermarks-remover-web/](https://ivanusto.github.io/watermarks-remover-web/) · Local: open `index.html` or run `python3 serve_local.py`.
 
 ## What it does (and does not)
 
