@@ -1,0 +1,129 @@
+"""Cross-engine parity: js/image_meta.js must produce the same bytes as upstream image_meta.py."""
+from __future__ import annotations
+
+import base64
+import json
+import os
+import shutil
+import struct
+import subprocess
+import sys
+import zlib
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+UPSTREAM = Path(os.environ.get("WATERMARKS_UPSTREAM_DIR", ROOT.parent / "watermarks-remover"))
+SCRIPTS = UPSTREAM / "service" / "scripts"
+NODE = shutil.which("node")
+pytestmark = pytest.mark.skipif(NODE is None or not (SCRIPTS / "image_meta.py").is_file(),
+                                reason="needs node and an upstream checkout (WATERMARKS_UPSTREAM_DIR)")
+if (SCRIPTS / "image_meta.py").is_file():
+    sys.path.insert(0, str(SCRIPTS))
+    import image_meta  # type: ignore  # noqa: E402
+
+
+def png_chunk(ctype: bytes, payload: bytes) -> bytes:
+    return struct.pack(">I", len(payload)) + ctype + payload + struct.pack(">I", zlib.crc32(ctype + payload) & 0xFFFFFFFF)
+
+
+def make_png(extra: list[tuple[bytes, bytes]]) -> bytes:
+    ihdr = png_chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
+    idat = png_chunk(b"IDAT", zlib.compress(b"\x00\xff\x00\x00\xff"))
+    body = ihdr
+    for t, p in extra[: len(extra) // 2]:
+        body += png_chunk(t, p)
+    body += idat
+    for t, p in extra[len(extra) // 2:]:
+        body += png_chunk(t, p)
+    return image_meta.PNG_SIG + body + png_chunk(b"IEND", b"")
+
+
+def jpeg_seg(marker: int, payload: bytes) -> bytes:
+    return bytes([0xFF, marker]) + struct.pack(">H", len(payload) + 2) + payload
+
+
+def make_jpeg(apps: list[tuple[int, bytes]]) -> bytes:
+    out = b"\xff\xd8" + jpeg_seg(0xE0, b"JFIF\x00\x01\x02\x00\x00\x01\x00\x01\x00\x00")
+    for m, p in apps:
+        out += jpeg_seg(m, p)
+    out += jpeg_seg(0xDB, b"\x00" + bytes(64)) + jpeg_seg(0xC0, b"\x08\x00\x01\x00\x01\x01\x01\x11\x00")
+    out += jpeg_seg(0xC4, b"\x00" + bytes(16) + b"\x00") + jpeg_seg(0xDA, b"\x01\x01\x00\x00\x3f\x00")
+    return out + b"\x12\x34\xff\x00\x56" + b"\xff\xd9"
+
+
+def riff_chunk(fourcc: bytes, payload: bytes) -> bytes:
+    return fourcc + struct.pack("<I", len(payload)) + payload + (b"\x00" if len(payload) & 1 else b"")
+
+
+def make_webp(chunks: list[tuple[bytes, bytes]], flags: int) -> bytes:
+    vp8x = riff_chunk(b"VP8X", bytes([flags, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+    vp8 = riff_chunk(b"VP8 ", b"\x00" * 11)
+    body = b"WEBP" + vp8x
+    for f, p in chunks:
+        body += riff_chunk(f, p)
+    body += vp8
+    return b"RIFF" + struct.pack("<I", len(body)) + body
+
+
+XMP_AI = b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF><digitalSourceType>trainedAlgorithmicMedia</digitalSourceType></rdf:RDF></x:xmpmeta>'
+JUMBF = b"\x00\x00\x00\x1fjumb\x00\x00\x00\x17jumdc2pa\x00\x11\x00\x10\x80\x00\x00\xaa\x00\x38\x9b\x71\x03c2pa\x00"
+
+SAMPLES = {
+    "png_clean": make_png([]),
+    "png_text": make_png([(b"tEXt", b"Software\x00Photoshop"), (b"iTXt", b"XML:com.adobe.xmp\x00\x00\x00\x00\x00" + XMP_AI)]),
+    "png_exif_c2pa": make_png([(b"eXIf", b"MM\x00*"), (b"caBX", JUMBF), (b"tIME", bytes(7)), (b"pHYs", bytes(9))]),
+    "png_private_c2pa": make_png([(b"prVt", b"hello contentcredentials"), (b"tRNS", b"\x00\x00")]),
+    "jpeg_clean": make_jpeg([]),
+    "jpeg_exif_xmp": make_jpeg([(0xE1, b"Exif\x00\x00MM\x00*"), (0xE1, b"http://ns.adobe.com/xap/1.0/\x00" + XMP_AI), (0xFE, b"a comment")]),
+    "jpeg_c2pa": make_jpeg([(0xEB, b"JP\x00\x01" + JUMBF), (0xE2, b"ICC_PROFILE\x00" + bytes(20)), (0xEE, b"Adobe" + bytes(7))]),
+    "webp_clean": make_webp([], 0x10),
+    "webp_meta": make_webp([(b"ICCP", bytes(9)), (b"EXIF", b"MM\x00*" + b"OpenAI"), (b"XMP ", XMP_AI)], 0x10 | 0x20 | 0x08 | 0x04),
+    "webp_c2pa": make_webp([(b"C2PA", JUMBF)], 0x10),
+}
+
+
+def _js(mode: str, data: bytes, options: dict) -> dict:
+    req = {"mode": mode, "file": base64.b64encode(data).decode(), "options": options}
+    proc = subprocess.run([NODE, str(ROOT / "tests" / "image_meta_cli.js")], input=json.dumps(req),
+                          capture_output=True, text=True, check=True)
+    return json.loads(proc.stdout)
+
+
+@pytest.mark.parametrize("name", sorted(SAMPLES))
+@pytest.mark.parametrize("strip_all", [True, False])
+def test_clean_parity(name: str, strip_all: bool) -> None:
+    data = SAMPLES[name]
+    fmt = image_meta.detect_format(data)
+    fn = {"png": image_meta.strip_png, "jpeg": image_meta.strip_jpeg, "webp": image_meta.strip_webp}[fmt]
+    kw = {"png": "strip_all_text", "jpeg": "strip_all_app", "webp": "strip_all_metadata"}[fmt]
+    py_bytes, py_actions = fn(data, **{kw: strip_all})
+    js = _js("clean", data, {"stripAllMetadata": strip_all})
+    assert "error" not in js, js
+    assert js["format"] == fmt
+    assert base64.b64decode(js["data"]) == py_bytes, name
+    assert js["actions"] == py_actions, name
+
+
+@pytest.mark.parametrize("name", sorted(SAMPLES))
+def test_inspect_parity(name: str) -> None:
+    data = SAMPLES[name]
+    fmt = image_meta.detect_format(data)
+    fn = {"png": image_meta.inspect_png, "jpeg": image_meta.inspect_jpeg, "webp": image_meta.inspect_webp}[fmt]
+    has_c2pa, has_ai, findings = fn(data)
+    js = _js("inspect", data, {})
+    assert js["format"] == fmt
+    assert (js["has_c2pa"], js["has_ai_metadata"], js["findings"]) == (has_c2pa, has_ai, findings), name
+
+
+def test_idempotent_and_valid_structure() -> None:
+    for name, data in SAMPLES.items():
+        js1 = _js("clean", data, {})
+        once = base64.b64decode(js1["data"])
+        js2 = _js("clean", once, {})
+        assert base64.b64decode(js2["data"]) == once, name
+        fmt = image_meta.detect_format(once)
+        assert fmt == image_meta.detect_format(data)
+        if fmt == "webp":
+            assert struct.unpack("<I", once[4:8])[0] + 8 == len(once)

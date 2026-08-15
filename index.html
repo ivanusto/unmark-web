@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark light" />
+  <title data-i18n="docTitle">AI Watermarks Remover — Web</title>
+  <meta name="description" data-i18n-content="docDesc" content="Browser-first web client for watermarks-remover: strip invisible Unicode marks and C2PA/EXIF/XMP metadata locally, or drive the Python service." />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src *; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body data-theme="dark">
+  <a class="sr-only" href="#main" data-i18n="skipLink">Skip to content</a>
+  <div class="app-container">
+    <header>
+      <a href="#" class="brand" aria-label="AI Watermarks Remover — Web">
+        <div class="brand-icon" aria-hidden="true">🛡️</div>
+        <div>
+          <div class="brand-title" data-i18n="appTitle">AI 浮水印與來源標記清除器</div>
+          <div class="brand-sub" data-i18n="appSub">Web client for watermarks-remover · Layer A + image metadata</div>
+        </div>
+      </a>
+      <div class="header-controls">
+        <button class="btn-icon" id="btn-lang" type="button" data-i18n-title="btnLangTitle" title="Switch language" aria-label="Switch language">🌐 EN</button>
+        <button class="btn-icon" id="btn-theme" type="button" data-i18n-title="btnThemeTitle" title="Toggle theme" aria-label="Toggle theme" aria-pressed="true">🌙</button>
+        <button class="btn-icon" id="btn-settings" type="button" data-i18n-title="btnSettingsTitle" title="Server settings" aria-label="Server settings" aria-expanded="false" aria-controls="settings-panel">⚙️</button>
+        <a href="https://github.com/ivanusto/watermarks-remover-web" target="_blank" rel="noopener noreferrer" class="btn-icon" title="GitHub" aria-label="Source on GitHub">
+          <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+      </div>
+    </header>
+
+    <main id="main">
+      <div class="privacy-banner" role="status">
+        <div class="privacy-text">
+          <span aria-hidden="true">🔒</span>
+          <span id="engine-desc" data-i18n="engineDescBrowser">Everything runs in this browser tab. Nothing is uploaded unless you configure a server below.</span>
+        </div>
+        <div id="engine-status" class="engine-status-badge">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="engine-text" data-i18n="engineBrowser">Browser engine</span>
+        </div>
+      </div>
+
+      <section class="settings-panel" id="settings-panel" hidden aria-labelledby="settings-title">
+        <h2 id="settings-title" class="box-header" data-i18n="settingsTitle">Server connection (optional)</h2>
+        <div class="settings-grid">
+          <div class="field">
+            <label for="srv-url" data-i18n="srvUrl">Service URL</label>
+            <input type="url" id="srv-url" placeholder="http://127.0.0.1:8765" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="srv-key" data-i18n="srvKey">API key (Bearer, optional)</label>
+            <input type="password" id="srv-key" autocomplete="off" />
+          </div>
+        </div>
+        <div class="settings-actions">
+          <label class="checkbox-label"><input type="checkbox" id="srv-remember" /> <span data-i18n="srvRemember">Remember in this browser</span></label>
+          <button class="btn btn-secondary" id="btn-srv-test" type="button" data-i18n="btnTest">Test connection</button>
+          <button class="btn btn-secondary" id="btn-srv-clear" type="button" data-i18n="btnForget">Forget</button>
+          <span id="srv-status" aria-live="polite"></span>
+        </div>
+        <div class="engine-select" role="radiogroup" aria-labelledby="engine-pref-label">
+          <span id="engine-pref-label" data-i18n="enginePref">Engine:</span>
+          <label><input type="radio" name="engine" value="auto" checked /> <span data-i18n="engineAuto">Auto (server if reachable)</span></label>
+          <label><input type="radio" name="engine" value="browser" /> <span data-i18n="engineBrowserOnly">Browser only</span></label>
+          <label><input type="radio" name="engine" value="server" /> <span data-i18n="engineServerOnly">Server only</span></label>
+        </div>
+        <p class="settings-note" data-i18n-html="settingsNote"></p>
+      </section>
+
+      <div class="tabs-nav" role="tablist" aria-label="Tools">
+        <button class="tab-btn active" role="tab" id="tab-btn-text" aria-selected="true" aria-controls="tab-text" data-tab="tab-text" type="button">
+          <span aria-hidden="true">📝</span><span data-i18n="tabText">Text (Layer A)</span>
+        </button>
+        <button class="tab-btn" role="tab" id="tab-btn-file" aria-selected="false" aria-controls="tab-file" data-tab="tab-file" tabindex="-1" type="button">
+          <span aria-hidden="true">📁</span><span data-i18n="tabFile">Files &amp; images (metadata / C2PA)</span>
+        </button>
+      </div>
+
+      <div class="tab-pane active" id="tab-text" role="tabpanel" aria-labelledby="tab-btn-text">
+        <div class="main-card">
+          <div class="options-bar">
+            <div class="options-group">
+              <label class="checkbox-label" data-i18n-title="optSpacesTitle"><input type="checkbox" id="opt-spaces" checked /><span data-i18n="optSpaces">Normalize space homoglyphs</span></label>
+              <label class="checkbox-label" data-i18n-title="optNfkcTitle"><input type="checkbox" id="opt-nfkc" /><span data-i18n="optNfkc">NFKC normalize</span></label>
+              <label class="checkbox-label" data-i18n-title="optLatinTitle"><input type="checkbox" id="opt-latin" /><span data-i18n="optLatin">Replace Latin confusables (aggressive)</span></label>
+              <label class="checkbox-label" data-i18n-title="optGlueTitle"><input type="checkbox" id="opt-glue" /><span data-i18n="optGlue">Strip emoji/script glue too (paranoid)</span></label>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-sample-text" type="button" data-i18n="btnSample">Load sample</button>
+          </div>
+          <div class="text-grid">
+            <div class="text-box-container">
+              <div class="box-header">
+                <label for="input-text" data-i18n="inputHeader">Original text</label>
+                <span id="char-count-in" aria-live="polite">0</span>
+              </div>
+              <div class="textarea-wrapper">
+                <textarea id="input-text" data-i18n-placeholder="inputPlaceholder" placeholder="Paste text here…" spellcheck="false"></textarea>
+              </div>
+            </div>
+            <div class="text-box-container">
+              <div class="box-header">
+                <span id="lbl-output-header" data-i18n="outputHeader">Cleaned text</span>
+                <span id="char-count-out" aria-live="polite">0</span>
+              </div>
+              <div class="textarea-wrapper">
+                <div class="output-preview" id="output-text" tabindex="0" aria-labelledby="lbl-output-header"></div>
+              </div>
+            </div>
+          </div>
+          <div class="report-box" id="text-report-box" aria-live="polite">
+            <div class="report-title"><span aria-hidden="true">🔍</span><span data-i18n="reportTitle">Findings</span></div>
+            <div class="tags-container" id="text-report-tags"></div>
+          </div>
+          <div class="actions-bar mt-20">
+            <button class="btn btn-secondary" id="btn-clear-text" type="button" data-i18n="btnClear">Clear</button>
+            <button class="btn btn-primary" id="btn-copy-text" type="button"><span aria-hidden="true">📋</span><span data-i18n="btnCopy">Copy cleaned text</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="tab-file" role="tabpanel" aria-labelledby="tab-btn-file" hidden>
+        <div class="main-card">
+          <input type="file" id="file-input" class="sr-only" multiple accept=".png,.jpg,.jpeg,.webp,.txt,.md,.markdown,.html,.htm,.svg,.pdf,.docx,.odt" />
+          <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-describedby="dropzone-desc">
+            <div class="dropzone-icon" aria-hidden="true">📥</div>
+            <div class="dropzone-title" data-i18n="dropTitle">Drop files here, or press Enter to browse</div>
+            <div class="dropzone-desc" id="dropzone-desc" data-i18n="dropDescBrowser">Browser engine: PNG, JPEG, WebP (metadata), TXT/MD/HTML/SVG (Layer A text only). PDF, DOCX, ODT need a server.</div>
+          </div>
+          <div class="options-bar mt-14">
+            <div class="options-group">
+              <label class="checkbox-label" data-i18n-title="optKeepMetaTitle"><input type="checkbox" id="opt-keep-meta" /><span data-i18n="optKeepMeta">Keep non-AI metadata (only drop AI/C2PA hits)</span></label>
+            </div>
+          </div>
+          <div id="file-results-container" aria-live="polite"></div>
+        </div>
+      </div>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"><span id="toast-icon" aria-hidden="true">✅</span><span id="toast-msg"></span></div>
+
+    <footer>
+      <p data-i18n-html="footerCredit"></p>
+      <p class="footnote" data-i18n="footerPrivacy">No analytics, no fonts, no third-party requests. Server calls only go to the URL you configure.</p>
+    </footer>
+  </div>
+
+  <script src="js/layer_a.js"></script>
+  <script src="js/image_meta.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
