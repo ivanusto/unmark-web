@@ -148,6 +148,29 @@ header {
   background: var(--bg-card-hover);
 }
 
+/* Language picker — same chrome as .btn-icon, but sized to its content and kept a
+   native <select> so it stays keyboard- and screen-reader-friendly. */
+.lang-select {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  height: 38px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+}
+.lang-select:hover {
+  color: var(--text-primary);
+  border-color: var(--border-focus);
+  background: var(--bg-card-hover);
+}
+.lang-select option {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
 /* Privacy Banner */
 .privacy-banner {
   background: var(--bg-card);

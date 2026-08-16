@@ -6,6 +6,21 @@
   const UPSTREAM = "https://github.com/guillaumemeyer/watermarks-remover";
   const REPO = "https://github.com/ivanusto/watermarks-remover-web";
 
+  const LS_KEY = "watermarks-remover-web.lang";
+
+  /* Supported locales, in switcher order. `code` is also the <html lang> value and what
+   * gets stored in localStorage; `name` is written in the language itself. Adding a
+   * locale = one entry here + one dictionary below; nothing else is hard-coded. */
+  const LANGS = [
+    { code: "en", name: "English" },
+    { code: "zh-Hant", name: "繁體中文" },
+    { code: "zh-Hans", name: "简体中文" },
+  ];
+
+  /* Lookup chain tried before `en` when a key is missing. Chinese falls back across
+   * scripts first — for a Chinese reader the other script beats English. */
+  const FALLBACK = { "zh-Hant": ["zh-Hans"], "zh-Hans": ["zh-Hant"] };
+
   const dict = {
     en: {
       docTitle: "AI Watermarks Remover — Web",
@@ -13,16 +28,16 @@
       skipLink: "Skip to content",
       appTitle: "AI Watermarks & Provenance Remover",
       appSub: "Web client for watermarks-remover · Layer A + image metadata",
-      btnLangTitle: "切換為繁體中文", btnThemeTitle: "Toggle light/dark theme", btnSettingsTitle: "Server settings",
-      engineBrowser: "Browser engine", engineServer: "Server: {url} (v{version})",
-      engineDescBrowser: "Everything runs in this browser tab. Nothing is uploaded unless you configure a server.",
-      engineDescServer: "Files are sent to the server you configured; the browser engine remains available for text and images.",
-      engineDescServerDown: "Configured server is unreachable — falling back to the browser engine.",
+      btnLangTitle: "Interface language", btnThemeTitle: "Toggle light/dark theme", btnSettingsTitle: "Server settings",
+      engineBrowser: "On this device", engineServer: "Server: {url} (v{version})",
+      engineDescBrowser: "Your files never leave this device. Everything is processed inside your browser — nothing is uploaded.",
+      engineDescServer: "Files are sent to the server you connected; text and images are still handled on this device.",
+      engineDescServerDown: "The server you configured can't be reached — processing here instead.",
       settingsTitle: "Server connection (optional)",
       srvUrl: "Service URL", srvKey: "API key (Bearer, optional)", srvRemember: "Remember in this browser",
       btnTest: "Test connection", btnForget: "Forget",
       srvOk: "✅ Connected — v{version}{caps}", srvFail: "⚠️ {error}", srvTesting: "Testing…",
-      enginePref: "Engine:", engineAuto: "Auto (server if reachable)", engineBrowserOnly: "Browser only", engineServerOnly: "Server only",
+      enginePref: "Processing:", engineAuto: "Auto (use the server when reachable)", engineBrowserOnly: "On this device only", engineServerOnly: "Server only",
       settingsNote: `Run the upstream service with <code>python3 service/scripts/server.py</code> (or its Docker image). It binds to 127.0.0.1:8765 and sends no CORS headers (by design), so this page can only reach it when served from the same origin, e.g. via <code>serve_local.py</code>, or through a reverse proxy that allows this page's origin — see the README section <em>Connecting a server</em>. Docs: <a href="${UPSTREAM}/tree/main/service" target="_blank" rel="noopener noreferrer">service/</a>.`,
       tabText: "Text (Layer A)", tabFile: "Files & images (metadata / C2PA)",
       optSpaces: "Normalize space homoglyphs", optSpacesTitle: "Replace NBSP, thin/em/ideographic spaces etc. with U+0020",
@@ -36,16 +51,16 @@
       cleanText: "✅ No Layer A carriers found", removedTag: "removed {n}× {label}", replacedTag: "replaced {n}× {label}",
       nfkcTag: "NFKC changed {n} chars", kindTag: "{kind}",
       dropTitle: "Drop files here, or press Enter to browse",
-      dropDescBrowser: "Browser engine: PNG, JPEG, WebP (metadata), TXT/MD/HTML/SVG (Layer A text only). PDF, DOCX, ODT need a server.",
-      dropDescServer: "Server engine: PNG, JPEG, WebP, SVG, PDF, DOCX, ODT, HTML, Markdown, TXT.",
+      dropDescBrowser: "On this device: PNG, JPEG, WebP (metadata), TXT/MD/HTML/SVG (Layer A text only). PDF, DOCX, ODT need a server.",
+      dropDescServer: "Via the server: PNG, JPEG, WebP, SVG, PDF, DOCX, ODT, HTML, Markdown, TXT.",
       optKeepMeta: "Keep non-AI metadata (only drop AI/C2PA hits)", optKeepMetaTitle: "Default strips all EXIF/XMP/text chunks. Tick to keep e.g. camera EXIF and only drop AI/C2PA-tagged blocks.",
       fileWorking: "Processing…", fileDone: "{from} → {to} · {engine}", download: "Download",
-      viaBrowser: "browser", viaServer: "server",
-      errTooLarge: "File is {size} — over the {limit} limit for the {engine} engine.",
-      errNeedServer: "This format needs the Python service. Configure a server (⚙️) or use the CLI.",
+      viaBrowser: "on this device", viaServer: "server",
+      errTooLarge: "File is {size} — over the {limit} limit ({engine}).",
+      errNeedServer: "This format needs the Python service. Connect a server (⚙️) or use the CLI.",
       errUnsupported: "Unsupported file type.",
       errServer: "Server error: {error}",
-      textOnlyNote: "Layer A only — metadata tags inside HTML/SVG/Markdown are left as-is in browser mode; use a server for full container cleaning.",
+      textOnlyNote: "Layer A only — metadata tags inside HTML/SVG/Markdown are left as-is when processing here; connect a server for full container cleaning.",
       imgClean: "No metadata chunks removed (already clean).",
       c2paFound: "C2PA / Content Credentials found and removed", aiMetaFound: "AI metadata hints found and removed",
       filesDone: "{n} file(s) processed",
@@ -53,22 +68,22 @@
       footerPrivacy: "No analytics, no web fonts, no third-party requests. Network calls only go to the server URL you configure.",
       sample: "This is a​sample with​zero-width﻿characters, a soft­hyphen, a ‮reversed‬ run,　an ideographic space, Cyrillic ао confusables, and preserved emoji ❤️‍🔥 plus می‌روم (Persian ZWNJ).",
     },
-    zh: {
+    "zh-Hant": {
       docTitle: "AI 浮水印清除器 — 網頁版",
       docDesc: "watermarks-remover 的瀏覽器優先網頁客戶端：在本機清除隱形 Unicode 標記與 C2PA/EXIF/XMP 中繼資料，或連線 Python 服務。",
       skipLink: "跳到主要內容",
       appTitle: "AI 浮水印與來源標記清除器",
       appSub: "watermarks-remover 網頁客戶端 · Layer A + 圖片中繼資料",
-      btnLangTitle: "Switch to English", btnThemeTitle: "切換深色／淺色主題", btnSettingsTitle: "伺服器設定",
-      engineBrowser: "瀏覽器引擎", engineServer: "伺服器：{url}（v{version}）",
-      engineDescBrowser: "所有運算都在這個瀏覽器分頁完成；除非你設定伺服器，否則不會上傳任何內容。",
-      engineDescServer: "檔案會送到你設定的伺服器；文字與圖片仍可使用瀏覽器引擎。",
-      engineDescServerDown: "設定的伺服器無法連線，已改用瀏覽器引擎。",
+      btnLangTitle: "介面語言", btnThemeTitle: "切換深色／淺色主題", btnSettingsTitle: "伺服器設定",
+      engineBrowser: "本機處理", engineServer: "伺服器：{url}（v{version}）",
+      engineDescBrowser: "你的檔案不會離開這台電腦。所有處理都在瀏覽器裡完成，不會上傳。",
+      engineDescServer: "檔案會傳到你連接的伺服器處理；文字與圖片仍在本機完成。",
+      engineDescServerDown: "連不上你設定的伺服器，已改在本機處理。",
       settingsTitle: "伺服器連線（選用）",
       srvUrl: "服務網址", srvKey: "API 金鑰（Bearer，選用）", srvRemember: "記住在此瀏覽器",
       btnTest: "測試連線", btnForget: "清除設定",
       srvOk: "✅ 已連線 — v{version}{caps}", srvFail: "⚠️ {error}", srvTesting: "測試中…",
-      enginePref: "引擎：", engineAuto: "自動（可連線時用伺服器）", engineBrowserOnly: "只用瀏覽器", engineServerOnly: "只用伺服器",
+      enginePref: "處理方式：", engineAuto: "自動（可連線時用伺服器）", engineBrowserOnly: "只在本機", engineServerOnly: "只用伺服器",
       settingsNote: `啟動上游服務：<code>python3 service/scripts/server.py</code>（或其 Docker 映像）。只綁定 127.0.0.1:8765 且刻意不送 CORS 標頭，因此本頁只有在同源提供（例如透過 <code>serve_local.py</code>）、或前方反向代理允許本頁來源時才能連上——請見 README 的〈Connecting a server〉。文件：<a href="${UPSTREAM}/tree/main/service" target="_blank" rel="noopener noreferrer">service/</a>。`,
       tabText: "文字（Layer A）", tabFile: "檔案與圖片（中繼資料／C2PA）",
       optSpaces: "正規化同形空白", optSpacesTitle: "把 NBSP、細空白、全形空白等替換為 U+0020",
@@ -82,16 +97,16 @@
       cleanText: "✅ 未發現 Layer A 載體", removedTag: "移除 {n}× {label}", replacedTag: "替換 {n}× {label}",
       nfkcTag: "NFKC 變動 {n} 字元", kindTag: "{kind}",
       dropTitle: "拖曳檔案到此，或按 Enter 選擇檔案",
-      dropDescBrowser: "瀏覽器引擎：PNG、JPEG、WebP（中繼資料），TXT/MD/HTML/SVG（僅 Layer A 文字）。PDF、DOCX、ODT 需要伺服器。",
-      dropDescServer: "伺服器引擎：PNG、JPEG、WebP、SVG、PDF、DOCX、ODT、HTML、Markdown、TXT。",
+      dropDescBrowser: "本機可處理：PNG、JPEG、WebP（中繼資料），TXT/MD/HTML/SVG（僅 Layer A 文字）。PDF、DOCX、ODT 需要伺服器。",
+      dropDescServer: "透過伺服器可處理：PNG、JPEG、WebP、SVG、PDF、DOCX、ODT、HTML、Markdown、TXT。",
       optKeepMeta: "保留非 AI 中繼資料（只移除 AI／C2PA 命中）", optKeepMetaTitle: "預設剝除所有 EXIF/XMP/文字區塊；勾選則保留例如相機 EXIF，只移除含 AI/C2PA 標記的區塊。",
       fileWorking: "處理中…", fileDone: "{from} → {to} · {engine}", download: "下載",
-      viaBrowser: "瀏覽器", viaServer: "伺服器",
-      errTooLarge: "檔案 {size}，超過 {engine} 引擎的 {limit} 上限。",
-      errNeedServer: "此格式需要 Python 服務。請設定伺服器（⚙️）或改用 CLI。",
+      viaBrowser: "本機處理", viaServer: "伺服器",
+      errTooLarge: "檔案 {size}，超過上限 {limit}（{engine}）。",
+      errNeedServer: "此格式需要 Python 服務。請連接伺服器（⚙️）或改用 CLI。",
       errUnsupported: "不支援的檔案類型。",
       errServer: "伺服器錯誤：{error}",
-      textOnlyNote: "僅 Layer A——瀏覽器模式不處理 HTML/SVG/Markdown 內的中繼資料標籤；完整容器清洗請使用伺服器。",
+      textOnlyNote: "僅 Layer A——在本機處理時不會清除 HTML/SVG/Markdown 內的中繼資料標籤；完整容器清洗請連接伺服器。",
       imgClean: "沒有可移除的中繼資料區塊（已是乾淨檔案）。",
       c2paFound: "發現並移除 C2PA / Content Credentials", aiMetaFound: "發現並移除 AI 中繼資料線索",
       filesDone: "已處理 {n} 個檔案",
@@ -99,11 +114,79 @@
       footerPrivacy: "無分析追蹤、無網頁字型、無第三方請求。網路呼叫只會送往你設定的伺服器網址。",
       sample: "這是一段帶有​零寬空格﻿與­軟連字號的‮測試文字‬，含　全形空白、西里爾同形字 ао，以及應被保留的 emoji ❤️‍🔥 和 می‌روم（波斯文 ZWNJ）。",
     },
+    "zh-Hans": {
+      docTitle: "AI 水印清除器 — 网页版",
+      docDesc: "watermarks-remover 的浏览器优先网页客户端：在本地清除隐形 Unicode 标记与 C2PA/EXIF/XMP 元数据，或连接 Python 服务。",
+      skipLink: "跳到主要内容",
+      appTitle: "AI 水印与溯源标记清除器",
+      appSub: "watermarks-remover 网页客户端 · Layer A + 图片元数据",
+      btnLangTitle: "界面语言", btnThemeTitle: "切换深色／浅色主题", btnSettingsTitle: "服务器设置",
+      engineBrowser: "本机处理", engineServer: "服务器：{url}（v{version}）",
+      engineDescBrowser: "你的文件不会离开这台电脑。所有处理都在浏览器里完成，不会上传。",
+      engineDescServer: "文件会传到你连接的服务器处理；文本与图片仍在本机完成。",
+      engineDescServerDown: "连不上你设置的服务器，已改在本机处理。",
+      settingsTitle: "服务器连接（可选）",
+      srvUrl: "服务地址", srvKey: "API 密钥（Bearer，可选）", srvRemember: "记住在此浏览器",
+      btnTest: "测试连接", btnForget: "清除设置",
+      srvOk: "✅ 已连接 — v{version}{caps}", srvFail: "⚠️ {error}", srvTesting: "测试中…",
+      enginePref: "处理方式：", engineAuto: "自动（可连接时用服务器）", engineBrowserOnly: "只在本机", engineServerOnly: "只用服务器",
+      settingsNote: `启动上游服务：<code>python3 service/scripts/server.py</code>（或其 Docker 镜像）。它只绑定 127.0.0.1:8765 且刻意不发送 CORS 标头，因此本页只有在同源提供（例如通过 <code>serve_local.py</code>）、或前方反向代理允许本页来源时才能连上——请见 README 的〈Connecting a server〉。文档：<a href="${UPSTREAM}/tree/main/service" target="_blank" rel="noopener noreferrer">service/</a>。`,
+      tabText: "文本（Layer A）", tabFile: "文件与图片（元数据／C2PA）",
+      optSpaces: "规范化同形空格", optSpacesTitle: "把 NBSP、细空格、全角空格等替换为 U+0020",
+      optNfkc: "NFKC 规范化", optNfkcTitle: "清洗后应用 Unicode NFKC（全角→半角、连字…）",
+      optLatin: "替换拉丁同形字（激进）", optLatinTitle: "把西里尔／全角的相似字母改为 ASCII——可能改动正常的非拉丁文字",
+      optGlue: "连 emoji／文字连接符也剥除（偏执模式）", optGlueTitle: "同时移除 emoji 后的 ZWJ/VS16、波斯语／印度系文字内的 ZWNJ/ZWJ、旗帜 tag 字符…",
+      btnSample: "加载示例", inputHeader: "原始文本", outputHeader: "清洗后文本",
+      inputPlaceholder: "粘贴来自 ChatGPT / Claude / Gemini / PDF 的文本…", chars: "{n} 字符",
+      reportTitle: "检测结果", btnClear: "清空", btnCopy: "复制清洗后文本",
+      copied: "已复制清洗后文本", copyFailed: "复制失败，请手动选取",
+      cleanText: "✅ 未发现 Layer A 载体", removedTag: "移除 {n}× {label}", replacedTag: "替换 {n}× {label}",
+      nfkcTag: "NFKC 变动 {n} 字符", kindTag: "{kind}",
+      dropTitle: "拖放文件到此，或按 Enter 选择文件",
+      dropDescBrowser: "本机可处理：PNG、JPEG、WebP（元数据），TXT/MD/HTML/SVG（仅 Layer A 文本）。PDF、DOCX、ODT 需要服务器。",
+      dropDescServer: "通过服务器可处理：PNG、JPEG、WebP、SVG、PDF、DOCX、ODT、HTML、Markdown、TXT。",
+      optKeepMeta: "保留非 AI 元数据（仅移除 AI／C2PA 命中）", optKeepMetaTitle: "默认剥除所有 EXIF/XMP/文本块；勾选则保留例如相机 EXIF，仅移除含 AI/C2PA 标记的块。",
+      fileWorking: "处理中…", fileDone: "{from} → {to} · {engine}", download: "下载",
+      viaBrowser: "本机处理", viaServer: "服务器",
+      errTooLarge: "文件 {size}，超过上限 {limit}（{engine}）。",
+      errNeedServer: "此格式需要 Python 服务。请连接服务器（⚙️）或改用 CLI。",
+      errUnsupported: "不支持的文件类型。",
+      errServer: "服务器错误：{error}",
+      textOnlyNote: "仅 Layer A——在本机处理时不会清除 HTML/SVG/Markdown 内的元数据标签；完整容器清洗请连接服务器。",
+      imgClean: "没有可移除的元数据块（已是干净文件）。",
+      c2paFound: "发现并移除 C2PA / Content Credentials", aiMetaFound: "发现并移除 AI 元数据线索",
+      filesDone: "已处理 {n} 个文件",
+      footerCredit: `<a href="${UPSTREAM}" target="_blank" rel="noopener noreferrer">guillaumemeyer/watermarks-remover</a>（MIT）的独立网页客户端——相同规则移植为 JavaScript 并经一致性测试。源代码：<a href="${REPO}" target="_blank" rel="noopener noreferrer">ivanusto/watermarks-remover-web</a>（MIT）。与上游项目无隶属关系。`,
+      footerPrivacy: "无统计分析、无网页字体、无第三方请求。网络请求只会发往你设置的服务器地址。",
+      // Carries the same invisible characters as the other samples: ZWSP, BOM, SHY,
+      // RLO/PDF, ideographic space, emoji VS16+ZWJ, Persian ZWNJ.
+      sample: "这是一段带有​零宽空格﻿与­软连字符的‮测试文本‬，含　全角空格、西里尔同形字 ао，以及应被保留的 emoji ❤️‍🔥 和 می‌روم（波斯语 ZWNJ）。",
+    },
   };
 
   let lang = "en";
+
+  /* Map any BCP-47 tag to a supported code, or null. Bare "zh" resolves to Simplified,
+   * following CLDR's default script for the language. */
+  function normalize(tag) {
+    const s = String(tag || "").toLowerCase().replace(/_/g, "-");
+    if (s === "zh" || s.indexOf("zh-") === 0) {
+      return /(^|-)(hant|tw|hk|mo)(-|$)/.test(s) ? "zh-Hant" : "zh-Hans";
+    }
+    if (s === "en" || s.indexOf("en-") === 0) return "en";
+    return null;
+  }
+
+  function lookup(key) {
+    const chain = [lang].concat(FALLBACK[lang] || [], "en");
+    for (const code of chain) {
+      const v = dict[code] && dict[code][key];
+      if (v) return v;
+    }
+    return key;
+  }
   function t(key, params) {
-    let s = (dict[lang] && dict[lang][key]) || dict.en[key] || key;
+    let s = lookup(key);
     if (params) for (const k of Object.keys(params)) s = s.split("{" + k + "}").join(String(params[k]));
     return s;
   }
@@ -114,12 +197,25 @@
     doc.querySelectorAll("[data-i18n-placeholder]").forEach((el) => { el.placeholder = t(el.getAttribute("data-i18n-placeholder")); });
     doc.querySelectorAll("[data-i18n-content]").forEach((el) => { el.setAttribute("content", t(el.getAttribute("data-i18n-content"))); });
     doc.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.getAttribute("data-i18n-html")); }); // dictionary-only HTML, never user input
-    document.documentElement.lang = lang === "zh" ? "zh-Hant" : "en";
+    document.documentElement.lang = lang;
   }
-  function setLang(l) { lang = dict[l] ? l : "en"; apply(); }
+  function setLang(l) { lang = dict[l] ? l : (normalize(l) || "en"); apply(); }
+  function save() { try { localStorage.setItem(LS_KEY, lang); } catch (_) {} }
   function detect() {
-    try { const s = localStorage.getItem("watermarks-remover-web.lang"); if (s && dict[s]) return s; } catch (_) {}
-    return /^zh/i.test(navigator.language || "") ? "zh" : "en";
+    let saved = null;
+    try { saved = localStorage.getItem(LS_KEY); } catch (_) {}
+    if (saved) {
+      if (dict[saved]) return saved;
+      if (saved === "zh") return "zh-Hant";  // legacy: "zh" was the Traditional dictionary
+      const n = normalize(saved);
+      if (n) return n;
+    }
+    const tags = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language];
+    for (const tag of tags) {
+      const n = normalize(tag);
+      if (n && dict[n]) return n;
+    }
+    return "en";
   }
-  root.I18n = { t, apply, setLang, detect, get lang() { return lang; } };
+  root.I18n = { t, apply, setLang, save, detect, normalize, LANGS, get lang() { return lang; } };
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -257,11 +257,17 @@
   }
   function initLang() {
     I18n.setLang(I18n.detect());
-    const label = () => { $("btn-lang").textContent = I18n.lang === "zh" ? "🌐 EN" : "🌐 中文"; };
-    label();
-    $("btn-lang").addEventListener("click", () => {
-      I18n.setLang(I18n.lang === "zh" ? "en" : "zh"); label();
-      try { localStorage.setItem("watermarks-remover-web.lang", I18n.lang); } catch (_) {}
+    const sel = $("sel-lang");
+    for (const l of I18n.LANGS) {                       // options come from the dictionary list
+      const opt = document.createElement("option");
+      opt.value = l.code; opt.textContent = l.name;
+      sel.appendChild(opt);
+    }
+    sel.value = I18n.lang;
+    sel.addEventListener("change", () => {
+      I18n.setLang(sel.value);
+      sel.value = I18n.lang;                            // setLang normalises unknown codes
+      I18n.save();
       runText(); renderEngineState();
     });
   }

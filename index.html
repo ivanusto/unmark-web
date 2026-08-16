@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -17,12 +17,12 @@
       <a href="#" class="brand" aria-label="AI Watermarks Remover — Web">
         <div class="brand-icon" aria-hidden="true">🛡️</div>
         <div>
-          <div class="brand-title" data-i18n="appTitle">AI 浮水印與來源標記清除器</div>
+          <div class="brand-title" data-i18n="appTitle">AI Watermarks &amp; Provenance Remover</div>
           <div class="brand-sub" data-i18n="appSub">Web client for watermarks-remover · Layer A + image metadata</div>
         </div>
       </a>
       <div class="header-controls">
-        <button class="btn-icon" id="btn-lang" type="button" data-i18n-title="btnLangTitle" title="Switch language" aria-label="Switch language">🌐 EN</button>
+        <select class="lang-select" id="sel-lang" data-i18n-title="btnLangTitle" title="Interface language" aria-label="Interface language"></select>
         <button class="btn-icon" id="btn-theme" type="button" data-i18n-title="btnThemeTitle" title="Toggle theme" aria-label="Toggle theme" aria-pressed="true">🌙</button>
         <button class="btn-icon" id="btn-settings" type="button" data-i18n-title="btnSettingsTitle" title="Server settings" aria-label="Server settings" aria-expanded="false" aria-controls="settings-panel">⚙️</button>
         <a href="https://github.com/ivanusto/watermarks-remover-web" target="_blank" rel="noopener noreferrer" class="btn-icon" title="GitHub" aria-label="Source on GitHub">
@@ -35,11 +35,11 @@
       <div class="privacy-banner" role="status">
         <div class="privacy-text">
           <span aria-hidden="true">🔒</span>
-          <span id="engine-desc" data-i18n="engineDescBrowser">Everything runs in this browser tab. Nothing is uploaded unless you configure a server below.</span>
+          <span id="engine-desc" data-i18n="engineDescBrowser">Your files never leave this device. Everything is processed inside your browser — nothing is uploaded.</span>
         </div>
         <div id="engine-status" class="engine-status-badge">
           <span class="status-dot" aria-hidden="true"></span>
-          <span id="engine-text" data-i18n="engineBrowser">Browser engine</span>
+          <span id="engine-text" data-i18n="engineBrowser">On this device</span>
         </div>
       </div>
 
@@ -62,9 +62,9 @@
           <span id="srv-status" aria-live="polite"></span>
         </div>
         <div class="engine-select" role="radiogroup" aria-labelledby="engine-pref-label">
-          <span id="engine-pref-label" data-i18n="enginePref">Engine:</span>
-          <label><input type="radio" name="engine" value="auto" checked /> <span data-i18n="engineAuto">Auto (server if reachable)</span></label>
-          <label><input type="radio" name="engine" value="browser" /> <span data-i18n="engineBrowserOnly">Browser only</span></label>
+          <span id="engine-pref-label" data-i18n="enginePref">Processing:</span>
+          <label><input type="radio" name="engine" value="auto" checked /> <span data-i18n="engineAuto">Auto (use the server when reachable)</span></label>
+          <label><input type="radio" name="engine" value="browser" /> <span data-i18n="engineBrowserOnly">On this device only</span></label>
           <label><input type="radio" name="engine" value="server" /> <span data-i18n="engineServerOnly">Server only</span></label>
         </div>
         <p class="settings-note" data-i18n-html="settingsNote"></p>
@@ -97,7 +97,7 @@
                 <span id="char-count-in" aria-live="polite">0</span>
               </div>
               <div class="textarea-wrapper">
-                <textarea id="input-text" data-i18n-placeholder="inputPlaceholder" placeholder="Paste text here…" spellcheck="false"></textarea>
+                <textarea id="input-text" data-i18n-placeholder="inputPlaceholder" placeholder="Paste text from ChatGPT / Claude / Gemini / a PDF…" spellcheck="false"></textarea>
               </div>
             </div>
             <div class="text-box-container">
@@ -127,7 +127,7 @@
           <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-describedby="dropzone-desc">
             <div class="dropzone-icon" aria-hidden="true">📥</div>
             <div class="dropzone-title" data-i18n="dropTitle">Drop files here, or press Enter to browse</div>
-            <div class="dropzone-desc" id="dropzone-desc" data-i18n="dropDescBrowser">Browser engine: PNG, JPEG, WebP (metadata), TXT/MD/HTML/SVG (Layer A text only). PDF, DOCX, ODT need a server.</div>
+            <div class="dropzone-desc" id="dropzone-desc" data-i18n="dropDescBrowser">On this device: PNG, JPEG, WebP (metadata), TXT/MD/HTML/SVG (Layer A text only). PDF, DOCX, ODT need a server.</div>
           </div>
           <div class="options-bar mt-14">
             <div class="options-group">
@@ -143,7 +143,7 @@
 
     <footer>
       <p data-i18n-html="footerCredit"></p>
-      <p class="footnote" data-i18n="footerPrivacy">No analytics, no fonts, no third-party requests. Server calls only go to the URL you configure.</p>
+      <p class="footnote" data-i18n="footerPrivacy">No analytics, no web fonts, no third-party requests. Network calls only go to the server URL you configure.</p>
     </footer>
   </div>
 
