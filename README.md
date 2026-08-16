@@ -1,5 +1,7 @@
 # watermarks-remover-web
 
+[English](README.md) · [繁體中文](README.zh-TW.md)
+
 Independent, browser-first web client for **[guillaumemeyer/watermarks-remover](https://github.com/guillaumemeyer/watermarks-remover)** — inspired by and compatible with its HTTP API. Not affiliated with the upstream project.
 
 - **Runs entirely in the browser** for text (Layer A: invisible Unicode / homoglyph spaces) and PNG / JPEG / WebP metadata (C2PA, EXIF, XMP, text chunks). No uploads, no analytics, no web fonts, no third-party requests.
@@ -46,7 +48,7 @@ WATERMARKS_UPSTREAM_DIR=../watermarks-remover .venv/bin/pytest -q
 - `js/layer_a.js` — port of `text_unicode.py` (`clean`, `inspect`, `decide`)
 - `js/image_meta.js` — port of `image_meta.py` (PNG/JPEG/WebP inspect + strip)
 - `js/api.js` — client for `/health /capabilities /inspect /clean`
-- `js/i18n.js`, `js/app.js`, `css/app.css`, `index.html` — UI (English / 繁體中文, light/dark, keyboard-accessible)
+- `js/i18n.js`, `js/app.js`, `css/app.css`, `index.html` — UI (English / 繁體中文 / 简体中文, light/dark, keyboard-accessible). The locale is picked from `navigator.languages` and remembered in `localStorage`; adding a language is one entry in `LANGS` plus one dictionary in `js/i18n.js`.
 - `tests/test_layer_a_parity.py`, `tests/test_image_meta_parity.py` — cross-engine parity vs the upstream checkout (skipped if `node` or the checkout is missing)
 - `serve_local.py` — same-origin static + `/api` proxy
 
