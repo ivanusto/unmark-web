@@ -3,11 +3,12 @@
  *
  * Faithful JavaScript port of `service/scripts/text_unicode.py` from
  * guillaumemeyer/watermarks-remover (MIT). The decision procedure (`decide`),
- * the "load-bearing invisible" preservation rules (emoji glue, script joiners,
- * flag tag chars, Mongolian FVS, Khmer inherent vowels, Hangul fillers,
- * orthographic Arabic/Syriac Cf marks) and the Cf catch-all mirror upstream so
- * that browser output matches the Python service byte-for-byte for the same
- * options. tests/test_layer_a_parity.py enforces that.
+ * the "load-bearing invisible" preservation rules (emoji glue, CJK/Mongolian
+ * variation selectors, script joiners, complete flag tag sequences, Mongolian
+ * FVS, Khmer inherent vowels, Hangul fillers, RTL directional marks and paired
+ * embeddings, orthographic Arabic/Syriac Cf marks) and the Cf catch-all mirror
+ * upstream so that browser output matches the Python service byte-for-byte for
+ * the same options. tests/test_layer_a_parity.py enforces that.
  *
  * Works as a plain <script> (exposes window.LayerA) and as a CommonJS module.
  */
@@ -50,6 +51,10 @@
     0x061c, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e,
     0x2066, 0x2067, 0x2068, 0x2069,
   ]);
+  // Directional marks and isolates are legitimate in mixed RTL/LTR prose:
+  // inspect them, but preserve them during the default clean. Embeddings and
+  // overrides stay destructive by default — they can reorder unrelated spans.
+  const PRESERVABLE_BIDI_CPS = new Set([0x061c, 0x200e, 0x200f, 0x2066, 0x2067, 0x2068, 0x2069]);
   const ZW_FAMILY = new Set([0x200b, 0x200c, 0x200d, 0x2060, 0xfeff, 0x180e]);
 
   const EMOJI_GLUE = new Set([0x200d, 0xfe0e, 0xfe0f]);
@@ -86,6 +91,7 @@
 
   function isEmojiBase(cp) {
     if (cp >= 0x1f000 && cp <= 0x1faff) return true;
+    if (cp >= 0x2190 && cp <= 0x25ff) return true; // arrows, technical, enclosed symbols
     if (cp >= 0x2600 && cp <= 0x27bf) return true;
     if (cp >= 0x2b00 && cp <= 0x2bff) return true;
     if (cp === 0x00a9 || cp === 0x00ae || cp === 0x2122 || cp === 0x3030 || cp === 0x303d || cp === 0x3297 || cp === 0x3299) return true;
@@ -94,29 +100,101 @@
   }
 
   const cat = (cp) => String.fromCodePoint(cp);
-  const isJoiningLetter = (cp) => cp > 0x7f && RE_LM.test(cat(cp));
+
+  const JOINING_SCRIPTS = [
+    [0x0600, 0x08ff, "arabic"],
+    [0x0900, 0x0dff, "indic"],
+    [0x0f00, 0x109f, "south-asian"],
+    [0x1780, 0x17ff, "khmer"],
+    [0x1800, 0x18af, "mongolian"],
+  ];
+  /** Broad script group where ZWJ/ZWNJ can be orthographic, else null. */
+  function joiningScript(cp) {
+    for (const [start, end, name] of JOINING_SCRIPTS) {
+      if (cp >= start && cp <= end && RE_LM.test(cat(cp))) return name;
+    }
+    return null;
+  }
+
+  const isCjkIdeograph = (cp) =>
+    (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0x4e00 && cp <= 0x9fff) ||
+    (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0x20000 && cp <= 0x323af);
+  const isMongolianBase = (cp) => cp >= 0x1800 && cp <= 0x18af;
+  const isVariationSelector = (cp) =>
+    inVsSupplement(cp) || (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0x180b && cp <= 0x180d);
+
   const isMongolianLetter = (cp) => cp >= 0x1800 && cp <= 0x18af && RE_L.test(cat(cp));
   const isKhmerLetter = (cp) => cp >= 0x1780 && cp <= 0x17ff && RE_L.test(cat(cp));
   const isHangulJamo = (cp) =>
     (cp >= 0x1100 && cp <= 0x11ff) || (cp >= 0xa960 && cp <= 0xa97c) || (cp >= 0xd7b0 && cp <= 0xd7c6);
 
   function isGlue(cp) {
-    return EMOJI_GLUE.has(cp) || SCRIPT_JOINERS.has(cp) || inTagRange(cp) ||
+    return EMOJI_GLUE.has(cp) || isVariationSelector(cp) || SCRIPT_JOINERS.has(cp) || inTagRange(cp) ||
       MONGOLIAN_FVS.has(cp) || KHMER_VOWELS.has(cp) || HANGUL_FILLERS.has(cp);
+  }
+
+  /** Code-point indices inside complete subdivision-flag tag sequences. */
+  function validFlagTagIndices(cps) {
+    const valid = new Set();
+    let i = 0;
+    while (i < cps.length) {
+      if (cps[i] !== 0x1f3f4) { i++; continue; } // waving black flag
+      let j = i + 1;
+      while (j < cps.length && cps[j] >= 0xe0020 && cps[j] <= 0xe007e) j++;
+      if (j > i + 1 && j < cps.length && cps[j] === 0xe007f) {
+        for (let k = i + 1; k <= j; k++) valid.add(k);
+        i = j + 1;
+      } else {
+        i++;
+      }
+    }
+    return valid;
+  }
+
+  /** Indices belonging to complete LRE/RLE … PDF pairs, excluding overrides. */
+  function validBidiEmbeddingIndices(cps) {
+    const valid = new Set();
+    const stack = [];
+    for (let index = 0; index < cps.length; index++) {
+      const cp = cps[index];
+      if (cp === 0x202a || cp === 0x202b || cp === 0x202d || cp === 0x202e) {
+        stack.push([cp, index]);
+      } else if (cp === 0x202c) {
+        if (!stack.length) continue;
+        const [opener, openerIndex] = stack.pop();
+        if (opener === 0x202a || opener === 0x202b) { valid.add(openerIndex); valid.add(index); }
+      }
+    }
+    return valid;
   }
 
   /**
    * Classify one code point. Returns [action, outChar, kind] where action is
    * "keep" | "strip" | "replace" and kind is null when not suspicious.
+   * prevKeptCp is the last non-glue survivor; prevInputCp/nextInputCp are the
+   * raw neighbours (null at the edges).
    */
-  function decide(cp, prevKeptCp, opts) {
-    const { normalizeSpaces, treatConfusables, stripEmojiGlue } = opts;
+  function decide(cp, prevKeptCp, prevInputCp, nextInputCp, opts) {
+    const { validFlagTag, validBidiEmbedding, normalizeSpaces, treatConfusables, stripEmojiGlue, stripBidi } = opts;
+    if (validBidiEmbedding && !stripBidi) return ["keep", cat(cp), null];
+    if (PRESERVABLE_BIDI_CPS.has(cp) && !stripBidi) return ["keep", cat(cp), null];
+    if (prevInputCp !== null && !stripEmojiGlue) {
+      if (inVsSupplement(cp) && isCjkIdeograph(prevInputCp)) return ["keep", cat(cp), null];
+      if (cp >= 0x180b && cp <= 0x180d && isMongolianBase(prevInputCp)) return ["keep", cat(cp), null];
+      if (cp >= 0xfe00 && cp <= 0xfe0d && isCjkIdeograph(prevInputCp)) return ["keep", cat(cp), null];
+    }
     if (EMOJI_GLUE.has(cp) && !stripEmojiGlue) {
-      if (prevKeptCp !== null && isEmojiBase(prevKeptCp)) return ["keep", cat(cp), null];
+      if ((cp === 0xfe0e || cp === 0xfe0f) && prevInputCp !== null && isEmojiBase(prevInputCp)) return ["keep", cat(cp), null];
+      if (cp === 0x200d && prevKeptCp !== null && nextInputCp !== null &&
+          isEmojiBase(prevKeptCp) && isEmojiBase(nextInputCp)) return ["keep", cat(cp), null];
     }
     if (!stripEmojiGlue) {
-      if (SCRIPT_JOINERS.has(cp) && prevKeptCp !== null && isJoiningLetter(prevKeptCp)) return ["keep", cat(cp), null];
-      if (inTagRange(cp) && prevKeptCp !== null && isEmojiBase(prevKeptCp)) return ["keep", cat(cp), null];
+      if (SCRIPT_JOINERS.has(cp) && prevInputCp !== null && nextInputCp !== null) {
+        const prevScript = joiningScript(prevInputCp);
+        const nextScript = joiningScript(nextInputCp);
+        if (prevScript !== null && prevScript === nextScript) return ["keep", cat(cp), null];
+      }
+      if (inTagRange(cp) && validFlagTag) return ["keep", cat(cp), null];
       if (MONGOLIAN_FVS.has(cp) && prevKeptCp !== null && isMongolianLetter(prevKeptCp)) return ["keep", cat(cp), null];
       if (KHMER_VOWELS.has(cp) && prevKeptCp !== null && isKhmerLetter(prevKeptCp)) return ["keep", cat(cp), null];
       if (HANGUL_FILLERS.has(cp) && prevKeptCp !== null && isHangulJamo(prevKeptCp)) return ["keep", cat(cp), null];
@@ -157,23 +235,83 @@
   }
   const hitConfidence = (kind) => (kind === "space" ? "informational" : "probable");
 
+  /*
+   * Total size of the matching blocks difflib.SequenceMatcher(None, a, b,
+   * autojunk=False) would produce. Upstream counts NFKC-changed input
+   * characters as the non-equal opcodes on the `a` side, which is exactly
+   * a.length minus this total, so the whole opcode list is never needed.
+   */
+  function matchingSize(a, b) {
+    const b2j = new Map();
+    for (let j = 0; j < b.length; j++) {
+      let list = b2j.get(b[j]);
+      if (!list) { list = []; b2j.set(b[j], list); }
+      list.push(j);
+    }
+    function findLongestMatch(alo, ahi, blo, bhi) {
+      let besti = alo, bestj = blo, bestsize = 0;
+      let j2len = new Map();
+      for (let i = alo; i < ahi; i++) {
+        const newj2len = new Map();
+        const js = b2j.get(a[i]);
+        if (js) {
+          for (const j of js) {
+            if (j < blo) continue;
+            if (j >= bhi) break;
+            const k = (j2len.get(j - 1) || 0) + 1;
+            newj2len.set(j, k);
+            if (k > bestsize) { besti = i - k + 1; bestj = j - k + 1; bestsize = k; }
+          }
+        }
+        j2len = newj2len;
+      }
+      while (besti > alo && bestj > blo && a[besti - 1] === b[bestj - 1]) { besti--; bestj--; bestsize++; }
+      while (besti + bestsize < ahi && bestj + bestsize < bhi && a[besti + bestsize] === b[bestj + bestsize]) bestsize++;
+      return [besti, bestj, bestsize];
+    }
+    let total = 0;
+    const queue = [[0, a.length, 0, b.length]];
+    while (queue.length) {
+      const [alo, ahi, blo, bhi] = queue.pop();
+      const [i, j, k] = findLongestMatch(alo, ahi, blo, bhi);
+      if (k) {
+        total += k;
+        if (alo < i && blo < j) queue.push([alo, i, blo, j]);
+        if (i + k < ahi && j + k < bhi) queue.push([i + k, ahi, j + k, bhi]);
+      }
+    }
+    return total;
+  }
+
+  const toCps = (s) => Array.from(s, (c) => c.codePointAt(0));
+
   /**
-   * clean(text, {nfkc, aggressiveHomoglyphs, normalizeSpaces, stripEmojiGlue})
+   * clean(text, {nfkc, aggressiveHomoglyphs, normalizeSpaces, stripEmojiGlue, stripBidi})
    * -> { cleaned, stats } — stats mirrors upstream clean_text().
    */
   function clean(text, options) {
-    const o = Object.assign({ nfkc: false, aggressiveHomoglyphs: false, normalizeSpaces: true, stripEmojiGlue: false }, options || {});
+    const o = Object.assign(
+      { nfkc: false, aggressiveHomoglyphs: false, normalizeSpaces: true, stripEmojiGlue: false, stripBidi: false },
+      options || {},
+    );
     const removed = new Map();
     const replaced = new Map();
     const out = [];
     let prevKept = null;
-    let inputLength = 0;
     const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
-    const dopts = { normalizeSpaces: o.normalizeSpaces, treatConfusables: o.aggressiveHomoglyphs, stripEmojiGlue: o.stripEmojiGlue };
-    for (const ch of text) {
-      inputLength++;
-      const cp = ch.codePointAt(0);
-      const [action, outChar] = decide(cp, prevKept, dopts);
+    const cps = toCps(text);
+    const validFlagTags = validFlagTagIndices(cps);
+    const validBidiEmbeddings = validBidiEmbeddingIndices(cps);
+    for (let i = 0; i < cps.length; i++) {
+      const cp = cps[i];
+      const [action, outChar] = decide(cp, prevKept, i > 0 ? cps[i - 1] : null, i + 1 < cps.length ? cps[i + 1] : null, {
+        validFlagTag: validFlagTags.has(i),
+        validBidiEmbedding: validBidiEmbeddings.has(i),
+        normalizeSpaces: o.normalizeSpaces,
+        treatConfusables: o.aggressiveHomoglyphs,
+        stripEmojiGlue: o.stripEmojiGlue,
+        stripBidi: o.stripBidi,
+      });
       if (action === "keep") {
         out.push(outChar);
         if (!isGlue(cp)) prevKept = cp;
@@ -186,26 +324,29 @@
       }
     }
     let result = out.join("");
-    let nfkcDelta = 0;
+    let nfkcChanged = false;
     if (o.nfkc) {
       const before = result;
       result = result.normalize("NFKC");
       if (result !== before) {
-        nfkcDelta = Math.abs(cpLen(before) - cpLen(result)) || 1;
-        replaced.set("NFKC_normalize", nfkcDelta);
+        nfkcChanged = true;
+        const a = toCps(before);
+        const changedInputs = a.length - matchingSize(a, toCps(result));
+        replaced.set("NFKC_normalize", changedInputs || 1);
       }
     }
     let removedCount = 0; for (const v of removed.values()) removedCount += v;
-    let replacedCount = 0; for (const [k, v] of replaced) if (k !== "NFKC_normalize") replacedCount += v;
+    let replacedCount = 0; for (const v of replaced.values()) replacedCount += v;
     return {
       cleaned: result,
       stats: {
-        input_length: inputLength,
+        input_length: cps.length,
         output_length: cpLen(result),
         removed: Object.fromEntries(removed),
         replaced: Object.fromEntries(replaced),
         removed_count: removedCount,
         replaced_count: replacedCount,
+        nfkc_changed: nfkcChanged,
       },
     };
   }
@@ -214,20 +355,28 @@
 
   /**
    * inspect(text, {aggressive, stripEmojiGlue}) -> report shaped like
-   * upstream TextInspectReport.to_dict().
+   * upstream TextInspectReport.to_dict(). Bidi controls are always reported,
+   * even though clean() preserves the legitimate ones by default.
    */
   function inspect(text, options) {
     const o = Object.assign({ aggressive: false, stripEmojiGlue: false }, options || {});
     const buckets = new Map(); // key "cp:kind" -> {cp, kind, offsets[]}
     let prevKept = null;
-    let i = 0;
-    const dopts = { normalizeSpaces: true, treatConfusables: o.aggressive, stripEmojiGlue: o.stripEmojiGlue };
-    for (const ch of text) {
-      const cp = ch.codePointAt(0);
-      const [action, outChar, kind] = decide(cp, prevKept, dopts);
+    const cps = toCps(text);
+    const validFlagTags = validFlagTagIndices(cps);
+    const validBidiEmbeddings = validBidiEmbeddingIndices(cps);
+    for (let i = 0; i < cps.length; i++) {
+      const cp = cps[i];
+      const [action, outChar, kind] = decide(cp, prevKept, i > 0 ? cps[i - 1] : null, i + 1 < cps.length ? cps[i + 1] : null, {
+        validFlagTag: validFlagTags.has(i),
+        validBidiEmbedding: validBidiEmbeddings.has(i),
+        normalizeSpaces: true,
+        treatConfusables: o.aggressive,
+        stripEmojiGlue: o.stripEmojiGlue,
+        stripBidi: true,
+      });
       if (kind === null) {
         if (!isGlue(cp)) prevKept = cp;
-        i++;
         continue;
       }
       const key = cp + ":" + kind;
@@ -235,7 +384,6 @@
       if (!b) { b = { cp, kind, offsets: [] }; buckets.set(key, b); }
       b.offsets.push(i);
       if (action === "replace") prevKept = outChar.codePointAt(0);
-      i++;
     }
     const hits = [...buckets.values()]
       .sort((a, b) => (b.offsets.length - a.offsets.length) || (a.cp - b.cp))
@@ -253,7 +401,7 @@
       "Statistical (token-sampling) watermarks are not detectable here; use Layer B rewrite.",
     ];
     if (!hits.length) notes.push("No deterministic Layer A (invisible Unicode/format) carriers detected.");
-    return { length: i, suspicious_total: total, hits, notes };
+    return { length: cps.length, suspicious_total: total, hits, notes };
   }
 
   const api = { clean, inspect, decide, isGlue, charLabel, STRIP_CODEPOINTS, SPACE_HOMOGLYPHS, LATIN_CONFUSABLES };
