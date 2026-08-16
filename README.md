@@ -43,7 +43,10 @@ The API key is only sent as `Authorization: Bearer …` to the URL you configure
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 git clone https://github.com/guillaumemeyer/watermarks-remover ../watermarks-remover     # for parity tests
 WATERMARKS_UPSTREAM_DIR=../watermarks-remover .venv/bin/pytest -q
+node scripts/check-upstream.mjs                                                          # upstream hash drift
 ```
+
+There is no `package.json` here — nothing at runtime or in the test suite needs npm, so the upstream check runs straight through `node`, exactly as [the workflow](.github/workflows/upstream-check.yml) does. It exits `0` when the recorded hashes still match, `1` on drift, and `2` when it could not check at all (network, rate limit, bad manifest) — an unreachable source is never reported as drift.
 
 - `js/layer_a.js` — port of `text_unicode.py` (`clean`, `inspect`, `decide`)
 - `js/image_meta.js` — port of `image_meta.py` (PNG/JPEG/WebP/AVIF/HEIC inspect + strip)
@@ -51,7 +54,7 @@ WATERMARKS_UPSTREAM_DIR=../watermarks-remover .venv/bin/pytest -q
 - `js/i18n.js`, `js/app.js`, `css/app.css`, `index.html` — UI (English / 繁體中文 / 简体中文, light/dark, keyboard-accessible). The locale is picked from `navigator.languages` and remembered in `localStorage`; adding a language is one entry in `LANGS` plus one dictionary in `js/i18n.js`.
 - `tests/test_layer_a_parity.py`, `tests/test_image_meta_parity.py` — cross-engine parity vs the upstream checkout (skipped if `node` or the checkout is missing)
 - `serve_local.py` — same-origin static + `/api` proxy
-- `scripts/check-upstream.mjs` — hashes the upstream Python modules against `scripts/upstream-sources.json`; `.github/workflows/upstream-check.yml` runs it and the parity suite daily and files an issue when either signal fires. Parity catches behaviour that changed; the hashes catch changes the fixtures do not reach, such as a newly supported format.
+- `scripts/check-upstream.mjs` — run it with `node scripts/check-upstream.mjs`; hashes the upstream Python modules against `scripts/upstream-sources.json`; `.github/workflows/upstream-check.yml` runs it and the parity suite daily and files an issue when either signal fires. Parity catches behaviour that changed; the hashes catch changes the fixtures do not reach, such as a newly supported format.
 
 No build step, no dependencies at runtime. CSP: `default-src 'self'; connect-src *` (the latter so you can point at your own server).
 

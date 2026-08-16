@@ -43,7 +43,10 @@ API 金鑰只會以 `Authorization: Bearer …` 送往你所設定的 URL，而�
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 git clone https://github.com/guillaumemeyer/watermarks-remover ../watermarks-remover     # parity 測試需要
 WATERMARKS_UPSTREAM_DIR=../watermarks-remover .venv/bin/pytest -q
+node scripts/check-upstream.mjs                                                          # 檢查上游雜湊漂移
 ```
+
+本專案沒有 `package.json` —— 執行期與測試都不需要 npm，因此上游檢查直接用 `node` 執行，與 [workflow](.github/workflows/upstream-check.yml) 的呼叫方式完全一致。退出碼：`0` 表示雜湊仍相符、`1` 表示偵測到漂移、`2` 表示根本無法檢查（網路、速率限制、manifest 有問題）—— 抓不到來源絕不會被當成漂移回報。
 
 - `js/layer_a.js` —— `text_unicode.py` 的移植（`clean`、`inspect`、`decide`）
 - `js/image_meta.js` —— `image_meta.py` 的移植（PNG/JPEG/WebP/AVIF/HEIC 檢查與清除）
@@ -51,7 +54,7 @@ WATERMARKS_UPSTREAM_DIR=../watermarks-remover .venv/bin/pytest -q
 - `js/i18n.js`、`js/app.js`、`css/app.css`、`index.html` —— UI（英文／繁體中文／簡體中文、淺色／深色、支援鍵盤操作）。語系依 `navigator.languages` 判斷並記在 `localStorage`；新增語言只需在 `js/i18n.js` 的 `LANGS` 加一列、再加一本字典。
 - `tests/test_layer_a_parity.py`、`tests/test_image_meta_parity.py` —— 與上游 checkout 的跨引擎 parity 測試（缺少 `node` 或該 checkout 時會跳過）
 - `serve_local.py` —— 同源靜態伺服器 + `/api` 代理
-- `scripts/check-upstream.mjs` —— 以 `scripts/upstream-sources.json` 記錄的雜湊比對上游 Python 模組；`.github/workflows/upstream-check.yml` 每天執行它與 parity 測試，任一訊號觸發就開 issue。parity 抓行為改變，雜湊抓測試涵蓋不到的變動（例如上游新增了一種格式）。
+- `scripts/check-upstream.mjs` —— 以 `node scripts/check-upstream.mjs` 執行；以 `scripts/upstream-sources.json` 記錄的雜湊比對上游 Python 模組；`.github/workflows/upstream-check.yml` 每天執行它與 parity 測試，任一訊號觸發就開 issue。parity 抓行為改變，雜湊抓測試涵蓋不到的變動（例如上游新增了一種格式）。
 
 沒有建置步驟，執行期零相依。CSP：`default-src 'self'; connect-src *`（後者是為了讓你能指向自己的伺服器）。
 
