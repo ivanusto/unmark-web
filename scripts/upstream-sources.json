@@ -1,0 +1,26 @@
+{
+  "note": "The Python modules js/layer_a.js and js/image_meta.js were ported from. scripts/check-upstream.mjs compares the live content against these hashes. The parity suite proves the ported behaviour still matches for the cases it covers; this catches the rest — new options, new formats, anything the fixtures do not exercise. When one moves, re-port it and update `sha256` in the same commit.",
+  "followUp": "If the parity suite is still green, the change is probably additive — a new format or option the fixtures do not reach. Add fixtures covering it, or the gap stays invisible the next time too.",
+  "sources": [
+    {
+      "id": "watermarks-remover/service/scripts/text_unicode.py",
+      "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/text_unicode.py",
+      "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/text_unicode.py",
+      "sha256": "166caa04ab0f9fecc5d83d1931bb6b7213e2e17dedaa02fd6213ca4293640e98",
+      "mirrors": [
+        "js/layer_a.js",
+        "tests/test_layer_a_parity.py"
+      ]
+    },
+    {
+      "id": "watermarks-remover/service/scripts/image_meta.py",
+      "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/image_meta.py",
+      "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/image_meta.py",
+      "sha256": "3e222cd1a66fef9b454080e88cf11b04e7c596f83dfb8d970a62a47095386b28",
+      "mirrors": [
+        "js/image_meta.js",
+        "tests/test_image_meta_parity.py"
+      ]
+    }
+  ]
+}

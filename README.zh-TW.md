@@ -51,6 +51,7 @@ WATERMARKS_UPSTREAM_DIR=../watermarks-remover .venv/bin/pytest -q
 - `js/i18n.js`、`js/app.js`、`css/app.css`、`index.html` —— UI（英文／繁體中文／簡體中文、淺色／深色、支援鍵盤操作）。語系依 `navigator.languages` 判斷並記在 `localStorage`；新增語言只需在 `js/i18n.js` 的 `LANGS` 加一列、再加一本字典。
 - `tests/test_layer_a_parity.py`、`tests/test_image_meta_parity.py` —— 與上游 checkout 的跨引擎 parity 測試（缺少 `node` 或該 checkout 時會跳過）
 - `serve_local.py` —— 同源靜態伺服器 + `/api` 代理
+- `scripts/check-upstream.mjs` —— 以 `scripts/upstream-sources.json` 記錄的雜湊比對上游 Python 模組；`.github/workflows/upstream-check.yml` 每天執行它與 parity 測試，任一訊號觸發就開 issue。parity 抓行為改變，雜湊抓測試涵蓋不到的變動（例如上游新增了一種格式）。
 
 沒有建置步驟，執行期零相依。CSP：`default-src 'self'; connect-src *`（後者是為了讓你能指向自己的伺服器）。
 

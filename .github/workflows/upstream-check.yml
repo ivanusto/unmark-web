@@ -1,0 +1,134 @@
+name: Watch upstream
+
+# Two different failure modes, two signals:
+#
+#   parity  — the ported behaviour stopped matching upstream for a case the
+#             fixtures cover. This is what went red when upstream reworked its
+#             multilingual preservation rules.
+#   hashes  — an upstream source file changed at all. Needed because a purely
+#             additive change (AVIF and HEIC support, for one) leaves every
+#             parity test green while this port quietly lacks the feature.
+#
+# The push/PR workflow already runs parity; this one runs it on a schedule so
+# drift surfaces without waiting for someone to commit.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: upstream-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: guillaumemeyer/watermarks-remover
+          path: upstream
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: Compare upstream hashes
+        id: hashes
+        continue-on-error: true
+        run: node scripts/check-upstream.mjs
+
+      - name: Run the parity suite against upstream main
+        id: parity
+        continue-on-error: true
+        run: WATERMARKS_UPSTREAM_DIR="$PWD/upstream" pytest -q
+
+      - name: Record which upstream commit was tested
+        id: upstream
+        run: echo "sha=$(git -C upstream rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Fail the run if the hashes could not be fetched
+        if: steps.hashes.outcome == 'failure' && steps.hashes.outputs.drift != 'true'
+        run: |
+          echo "::error::Could not reach the upstream sources; drift is unknown."
+          exit 1
+
+      - name: Open or update the drift issue
+        if: steps.hashes.outputs.drift == 'true' || steps.parity.outcome == 'failure'
+        uses: actions/github-script@v7
+        env:
+          DRIFT_BODY: ${{ steps.hashes.outputs.body }}
+          HASHES_DRIFTED: ${{ steps.hashes.outputs.drift }}
+          PARITY_OUTCOME: ${{ steps.parity.outcome }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const marker = '<!-- upstream-drift-check -->';
+            const title = 'Ports are out of sync with upstream watermarks-remover';
+            const parityFailed = process.env.PARITY_OUTCOME === 'failure';
+            const hashesDrifted = process.env.HASHES_DRIFTED === 'true';
+
+            const parts = [`Checked against upstream \`${process.env.UPSTREAM_SHA}\`. [Workflow run](${process.env.RUN_URL})`, ''];
+            if (parityFailed) {
+              parts.push(
+                '### Parity suite is failing',
+                '',
+                'The JavaScript engines no longer produce the same output as upstream for cases the fixtures cover. Read the run log for the failing cases, port the change into `js/layer_a.js` or `js/image_meta.js`, and add fixtures for anything new.',
+                ''
+              );
+            }
+            if (hashesDrifted) {
+              parts.push('### Upstream sources changed', '', process.env.DRIFT_BODY || '', '');
+            }
+            if (!parityFailed && hashesDrifted) {
+              parts.push(
+                'Parity is still green, so this is most likely an additive change — a new format or option that the fixtures do not exercise yet. Those are the ones that slip through silently.',
+                ''
+              );
+            }
+            const body = `${marker}\n\n${parts.join('\n')}`;
+
+            const open = (await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 100,
+            })).find((i) => !i.pull_request && i.body && i.body.includes(marker));
+
+            if (open) {
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: open.number, body,
+              });
+              core.info(`Updated issue #${open.number}.`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo, title, body,
+              });
+              core.info(`Opened issue #${created.data.number}.`);
+            }
+
+      - name: Close the drift issue once both signals are clean
+        if: steps.hashes.outcome == 'success' && steps.parity.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- upstream-drift-check -->';
+            const open = (await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 100,
+            })).filter((i) => !i.pull_request && i.body && i.body.includes(marker));
+            for (const issue of open) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number,
+                body: 'Parity is green and the upstream sources match the recorded hashes again — closing.',
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number, state: 'closed',
+              });
+              core.info(`Closed issue #${issue.number}.`);
+            }
