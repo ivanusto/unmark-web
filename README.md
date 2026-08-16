@@ -31,7 +31,7 @@ Live demo: [https://ivanusto.github.io/watermarks-remover-web/](https://ivanusto
    # open http://127.0.0.1:8766/  → the UI auto-selects /api
    ```
 2. **Any reverse proxy** that serves this directory and forwards a path to `server.py`; enter that path (e.g. `/api`) or URL in ⚙️ *Server connection*.
-3. **Direct URL** (e.g. from the GitHub Pages build) — only works if the server allows this page's origin via CORS. Upstream has no such flag today; a small opt-in `--cors-origin` is proposed (see [issue #77](https://github.com/guillaumemeyer/watermarks-remover/issues/77)). Do **not** put a wildcard CORS header on the API.
+3. **Direct URL** (e.g. from the GitHub Pages build) — only works if something in front of the server allows this page's origin via CORS. Upstream deliberately ships **no** CORS support in `server.py` (the API is meant to be server-to-server; see [issue #77](https://github.com/guillaumemeyer/watermarks-remover/issues/77) and [PR #78](https://github.com/guillaumemeyer/watermarks-remover/pull/78)), so this means your own reverse proxy in front of it. Do **not** put a wildcard CORS header on the API.
 
 The API key is only sent as `Authorization: Bearer …` to the URL you configured, and only stored in `localStorage` if you tick *Remember in this browser*.
 

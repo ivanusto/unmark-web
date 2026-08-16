@@ -3,9 +3,10 @@
  *   GET  /health, GET /capabilities, POST /inspect, POST /clean
  * See https://github.com/guillaumemeyer/watermarks-remover/tree/main/service
  *
- * The service is loopback-only and CORS-less by default. To use it from this
- * page you either serve the page from the same origin, or start server.py with
- * a CORS allow-list for this page's origin (see README "Connecting a server").
+ * The service is loopback-only and sends no CORS headers (by upstream design).
+ * To use it from this page, serve the page from the same origin (serve_local.py)
+ * or put a reverse proxy in front that allows this page's origin — see README
+ * "Connecting a server".
  * Bearer token is sent when configured; nothing is persisted unless the user
  * ticks "remember in this browser".
  */
