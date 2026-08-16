@@ -6,7 +6,7 @@
 
   const BROWSER_MAX_BYTES = 64 << 20;   // 64 MiB — keeps memory sane in a tab
   const SERVER_MAX_BYTES = 256 << 20;   // upstream WATERMARKS_MAX_INPUT_BYTES default
-  const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "webp"]);
+  const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "webp", "avif", "heic", "heif"]);
   const TEXT_EXT = new Set(["txt", "md", "markdown", "html", "htm", "svg"]);
   const SERVER_ONLY_EXT = new Set(["pdf", "docx", "odt"]);
 
