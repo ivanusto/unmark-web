@@ -34,7 +34,7 @@ API_KEY = ""
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "watermarks-remover-web/serve_local"
+    server_version = "unmark-web/serve_local"
 
     def log_message(self, fmt: str, *args: object) -> None:  # quieter, no client IPs in logs
         sys.stderr.write("%s\n" % (fmt % args))

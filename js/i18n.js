@@ -4,9 +4,10 @@
   "use strict";
 
   const UPSTREAM = "https://github.com/guillaumemeyer/watermarks-remover";
-  const REPO = "https://github.com/ivanusto/watermarks-remover-web";
+  const REPO = "https://github.com/ivanusto/unmark-web";
 
-  const LS_KEY = "watermarks-remover-web.lang";
+  const LS_KEY = "unmark-web.lang";
+  const LS_KEY_LEGACY = "watermarks-remover-web.lang";  // key used before the rename
 
   /* Supported locales, in switcher order. `code` is also the <html lang> value and what
    * gets stored in localStorage; `name` is written in the language itself. Adding a
@@ -23,11 +24,11 @@
 
   const dict = {
     en: {
-      docTitle: "AI Watermarks Remover — Web",
-      docDesc: "Browser-first web client for watermarks-remover: strip invisible Unicode marks and C2PA/EXIF/XMP metadata locally, or drive the Python service.",
+      docTitle: "Unmark — invisible marks & metadata remover",
+      docDesc: "Unmark is a browser-first web client: strip invisible Unicode marks and C2PA/EXIF/XMP metadata locally, or drive the watermarks-remover Python service.",
       skipLink: "Skip to content",
-      appTitle: "AI Watermarks & Provenance Remover",
-      appSub: "Web client for watermarks-remover · Layer A + image metadata",
+      appTitle: "Unmark",
+      appSub: "Invisible Unicode marks & image metadata · works with watermarks-remover",
       btnLangTitle: "Interface language", btnThemeTitle: "Toggle light/dark theme", btnSettingsTitle: "Server settings",
       engineBrowser: "On this device", engineServer: "Server: {url} (v{version})",
       engineDescBrowser: "Your files never leave this device. Everything is processed inside your browser — nothing is uploaded.",
@@ -64,16 +65,16 @@
       imgClean: "No metadata chunks removed (already clean).",
       c2paFound: "C2PA / Content Credentials found and removed", aiMetaFound: "AI metadata hints found and removed",
       filesDone: "{n} file(s) processed",
-      footerCredit: `Independent web client for <a href="${UPSTREAM}" target="_blank" rel="noopener noreferrer">guillaumemeyer/watermarks-remover</a> (MIT) — same rules, ported to JavaScript and parity-tested. Source: <a href="${REPO}" target="_blank" rel="noopener noreferrer">ivanusto/watermarks-remover-web</a> (MIT). Not affiliated with the upstream project.`,
+      footerCredit: `Independent web client for <a href="${UPSTREAM}" target="_blank" rel="noopener noreferrer">guillaumemeyer/watermarks-remover</a> (MIT) — same rules, ported to JavaScript and parity-tested. Source: <a href="${REPO}" target="_blank" rel="noopener noreferrer">ivanusto/unmark-web</a> (MIT). Not affiliated with the upstream project.`,
       footerPrivacy: "No analytics, no web fonts, no third-party requests. Network calls only go to the server URL you configure.",
       sample: "This is a​sample with​zero-width﻿characters, a soft­hyphen, a ‮reversed‬ run,　an ideographic space, Cyrillic ао confusables, and preserved emoji ❤️‍🔥 plus می‌روم (Persian ZWNJ).",
     },
     "zh-Hant": {
-      docTitle: "AI 浮水印清除器 — 網頁版",
-      docDesc: "watermarks-remover 的瀏覽器優先網頁客戶端：在本機清除隱形 Unicode 標記與 C2PA/EXIF/XMP 中繼資料，或連線 Python 服務。",
+      docTitle: "Unmark — 隱形標記與中繼資料清除器",
+      docDesc: "Unmark 是瀏覽器優先的網頁客戶端：在本機清除隱形 Unicode 標記與 C2PA/EXIF/XMP 中繼資料，或連線 watermarks-remover 的 Python 服務。",
       skipLink: "跳到主要內容",
-      appTitle: "AI 浮水印與來源標記清除器",
-      appSub: "watermarks-remover 網頁客戶端 · Layer A + 圖片中繼資料",
+      appTitle: "Unmark",
+      appSub: "隱形 Unicode 標記與圖片中繼資料 · 搭配 watermarks-remover",
       btnLangTitle: "介面語言", btnThemeTitle: "切換深色／淺色主題", btnSettingsTitle: "伺服器設定",
       engineBrowser: "本機處理", engineServer: "伺服器：{url}（v{version}）",
       engineDescBrowser: "你的檔案不會離開這台電腦。所有處理都在瀏覽器裡完成，不會上傳。",
@@ -110,16 +111,16 @@
       imgClean: "沒有可移除的中繼資料區塊（已是乾淨檔案）。",
       c2paFound: "發現並移除 C2PA / Content Credentials", aiMetaFound: "發現並移除 AI 中繼資料線索",
       filesDone: "已處理 {n} 個檔案",
-      footerCredit: `<a href="${UPSTREAM}" target="_blank" rel="noopener noreferrer">guillaumemeyer/watermarks-remover</a>（MIT）的獨立網頁客戶端——相同規則移植為 JavaScript 並經一致性測試。原始碼：<a href="${REPO}" target="_blank" rel="noopener noreferrer">ivanusto/watermarks-remover-web</a>（MIT）。與上游專案無隸屬關係。`,
+      footerCredit: `<a href="${UPSTREAM}" target="_blank" rel="noopener noreferrer">guillaumemeyer/watermarks-remover</a>（MIT）的獨立網頁客戶端——相同規則移植為 JavaScript 並經一致性測試。原始碼：<a href="${REPO}" target="_blank" rel="noopener noreferrer">ivanusto/unmark-web</a>（MIT）。與上游專案無隸屬關係。`,
       footerPrivacy: "無分析追蹤、無網頁字型、無第三方請求。網路呼叫只會送往你設定的伺服器網址。",
       sample: "這是一段帶有​零寬空格﻿與­軟連字號的‮測試文字‬，含　全形空白、西里爾同形字 ао，以及應被保留的 emoji ❤️‍🔥 和 می‌روم（波斯文 ZWNJ）。",
     },
     "zh-Hans": {
-      docTitle: "AI 水印清除器 — 网页版",
-      docDesc: "watermarks-remover 的浏览器优先网页客户端：在本地清除隐形 Unicode 标记与 C2PA/EXIF/XMP 元数据，或连接 Python 服务。",
+      docTitle: "Unmark — 隐形标记与元数据清除器",
+      docDesc: "Unmark 是浏览器优先的网页客户端：在本地清除隐形 Unicode 标记与 C2PA/EXIF/XMP 元数据，或连接 watermarks-remover 的 Python 服务。",
       skipLink: "跳到主要内容",
-      appTitle: "AI 水印与溯源标记清除器",
-      appSub: "watermarks-remover 网页客户端 · Layer A + 图片元数据",
+      appTitle: "Unmark",
+      appSub: "隐形 Unicode 标记与图片元数据 · 搭配 watermarks-remover",
       btnLangTitle: "界面语言", btnThemeTitle: "切换深色／浅色主题", btnSettingsTitle: "服务器设置",
       engineBrowser: "本机处理", engineServer: "服务器：{url}（v{version}）",
       engineDescBrowser: "你的文件不会离开这台电脑。所有处理都在浏览器里完成，不会上传。",
@@ -156,7 +157,7 @@
       imgClean: "没有可移除的元数据块（已是干净文件）。",
       c2paFound: "发现并移除 C2PA / Content Credentials", aiMetaFound: "发现并移除 AI 元数据线索",
       filesDone: "已处理 {n} 个文件",
-      footerCredit: `<a href="${UPSTREAM}" target="_blank" rel="noopener noreferrer">guillaumemeyer/watermarks-remover</a>（MIT）的独立网页客户端——相同规则移植为 JavaScript 并经一致性测试。源代码：<a href="${REPO}" target="_blank" rel="noopener noreferrer">ivanusto/watermarks-remover-web</a>（MIT）。与上游项目无隶属关系。`,
+      footerCredit: `<a href="${UPSTREAM}" target="_blank" rel="noopener noreferrer">guillaumemeyer/watermarks-remover</a>（MIT）的独立网页客户端——相同规则移植为 JavaScript 并经一致性测试。源代码：<a href="${REPO}" target="_blank" rel="noopener noreferrer">ivanusto/unmark-web</a>（MIT）。与上游项目无隶属关系。`,
       footerPrivacy: "无统计分析、无网页字体、无第三方请求。网络请求只会发往你设置的服务器地址。",
       // Carries the same invisible characters as the other samples: ZWSP, BOM, SHY,
       // RLO/PDF, ideographic space, emoji VS16+ZWJ, Persian ZWNJ.
@@ -203,7 +204,7 @@
   function save() { try { localStorage.setItem(LS_KEY, lang); } catch (_) {} }
   function detect() {
     let saved = null;
-    try { saved = localStorage.getItem(LS_KEY); } catch (_) {}
+    try { saved = localStorage.getItem(LS_KEY) || localStorage.getItem(LS_KEY_LEGACY); } catch (_) {}
     if (saved) {
       if (dict[saved]) return saved;
       if (saved === "zh") return "zh-Hant";  // legacy: "zh" was the Traditional dictionary

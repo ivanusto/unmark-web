@@ -245,14 +245,19 @@
     $("btn-theme").textContent = mode === "dark" ? "🌙" : "☀️";
     $("btn-theme").setAttribute("aria-pressed", String(mode === "dark"));
   }
+  const THEME_KEY = "unmark-web.theme";
+  const THEME_KEY_LEGACY = "watermarks-remover-web.theme";  // key used before the rename
+  function savedTheme() {
+    try { return localStorage.getItem(THEME_KEY) || localStorage.getItem(THEME_KEY_LEGACY); } catch (_) { return null; }
+  }
   function initTheme() {
-    let saved = null; try { saved = localStorage.getItem("watermarks-remover-web.theme"); } catch (_) {}
+    const saved = savedTheme();
     const mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)");
     applyTheme(saved || (mq && mq.matches ? "light" : "dark"));
-    if (mq && mq.addEventListener) mq.addEventListener("change", (e) => { if (!localStorage.getItem("watermarks-remover-web.theme")) applyTheme(e.matches ? "light" : "dark"); });
+    if (mq && mq.addEventListener) mq.addEventListener("change", (e) => { if (!savedTheme()) applyTheme(e.matches ? "light" : "dark"); });
     $("btn-theme").addEventListener("click", () => {
       const next = document.body.getAttribute("data-theme") === "dark" ? "light" : "dark";
-      applyTheme(next); try { localStorage.setItem("watermarks-remover-web.theme", next); } catch (_) {}
+      applyTheme(next); try { localStorage.setItem(THEME_KEY, next); } catch (_) {}
     });
   }
   function initLang() {

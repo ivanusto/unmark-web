@@ -1,6 +1,8 @@
-# watermarks-remover-web
+# Unmark（`unmark-web`）
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
+
+> 2026 年 8 月應上游維護者要求，自 `watermarks-remover-web` 改名，以免被誤認為官方元件。GitHub 會將舊的 repository 網址重新導向；線上示範已改到下方網址。
 
 **[guillaumemeyer/watermarks-remover](https://github.com/guillaumemeyer/watermarks-remover)** 的獨立瀏覽器優先網頁客戶端 —— 靈感來自該專案，並相容於它的 HTTP API。與上游專案無隸屬關係。
 
@@ -8,7 +10,7 @@
 - **可選擇驅動上游的 Python 服務**（`server.py`）處理其餘格式 —— PDF、DOCX、ODT、完整的 HTML／SVG／Markdown 容器清理，以及像素域後端。
 - JavaScript 引擎是上游 **`text_unicode.py` 與 `image_meta.py` 的逐行移植**，並有一套 parity 測試驗證輸出完全一致（保留／移除的字元相同，圖片解析器輸出的位元組也相同）。
 
-線上示範：[https://ivanusto.github.io/watermarks-remover-web/](https://ivanusto.github.io/watermarks-remover-web/) · 本機執行：直接開啟 `index.html`，或執行 `python3 serve_local.py`。
+線上示範：[https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/unmark-web/) · 本機執行：直接開啟 `index.html`，或執行 `python3 serve_local.py`。
 
 ## 功能範圍（與不做的事）
 

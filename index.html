@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="dark light" />
-  <title data-i18n="docTitle">AI Watermarks Remover — Web</title>
-  <meta name="description" data-i18n-content="docDesc" content="Browser-first web client for watermarks-remover: strip invisible Unicode marks and C2PA/EXIF/XMP metadata locally, or drive the Python service." />
+  <title data-i18n="docTitle">Unmark — invisible marks &amp; metadata remover</title>
+  <meta name="description" data-i18n-content="docDesc" content="Unmark is a browser-first web client: strip invisible Unicode marks and C2PA/EXIF/XMP metadata locally, or drive the watermarks-remover Python service." />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src *; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="css/app.css" />
@@ -14,18 +14,18 @@
   <a class="sr-only" href="#main" data-i18n="skipLink">Skip to content</a>
   <div class="app-container">
     <header>
-      <a href="#" class="brand" aria-label="AI Watermarks Remover — Web">
+      <a href="#" class="brand" aria-label="Unmark — invisible marks &amp; metadata remover">
         <div class="brand-icon" aria-hidden="true">🛡️</div>
         <div>
-          <div class="brand-title" data-i18n="appTitle">AI Watermarks &amp; Provenance Remover</div>
-          <div class="brand-sub" data-i18n="appSub">Web client for watermarks-remover · Layer A + image metadata</div>
+          <div class="brand-title" data-i18n="appTitle">Unmark</div>
+          <div class="brand-sub" data-i18n="appSub">Invisible Unicode marks &amp; image metadata · works with watermarks-remover</div>
         </div>
       </a>
       <div class="header-controls">
         <select class="lang-select" id="sel-lang" data-i18n-title="btnLangTitle" title="Interface language" aria-label="Interface language"></select>
         <button class="btn-icon" id="btn-theme" type="button" data-i18n-title="btnThemeTitle" title="Toggle theme" aria-label="Toggle theme" aria-pressed="true">🌙</button>
         <button class="btn-icon" id="btn-settings" type="button" data-i18n-title="btnSettingsTitle" title="Server settings" aria-label="Server settings" aria-expanded="false" aria-controls="settings-panel">⚙️</button>
-        <a href="https://github.com/ivanusto/watermarks-remover-web" target="_blank" rel="noopener noreferrer" class="btn-icon" title="GitHub" aria-label="Source on GitHub">
+        <a href="https://github.com/ivanusto/unmark-web" target="_blank" rel="noopener noreferrer" class="btn-icon" title="GitHub" aria-label="Source on GitHub">
           <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
         </a>
       </div>

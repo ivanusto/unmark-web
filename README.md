@@ -1,6 +1,8 @@
-# watermarks-remover-web
+# Unmark (`unmark-web`)
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
+
+> Renamed from `watermarks-remover-web` in August 2026, at the upstream maintainer's request, so it isn't mistaken for an official component. GitHub redirects the old repository URL; the demo moved to the address below.
 
 Independent, browser-first web client for **[guillaumemeyer/watermarks-remover](https://github.com/guillaumemeyer/watermarks-remover)** — inspired by and compatible with its HTTP API. Not affiliated with the upstream project.
 
@@ -8,7 +10,7 @@ Independent, browser-first web client for **[guillaumemeyer/watermarks-remover](
 - **Optionally drives the upstream Python service** (`server.py`) for everything else — PDF, DOCX, ODT, full HTML/SVG/Markdown container cleaning, and pixel-domain backends.
 - The JavaScript engines are **line-for-line ports of upstream's `text_unicode.py` and `image_meta.py`**, and a parity test suite asserts identical output (same characters kept/stripped, same bytes out of the image parsers).
 
-Live demo: [https://ivanusto.github.io/watermarks-remover-web/](https://ivanusto.github.io/watermarks-remover-web/) · Local: open `index.html` or run `python3 serve_local.py`.
+Live demo: [https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/unmark-web/) · Local: open `index.html` or run `python3 serve_local.py`.
 
 ## What it does (and does not)
 

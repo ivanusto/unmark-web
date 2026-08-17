@@ -13,13 +13,14 @@
 (function (root) {
   "use strict";
 
-  const STORAGE_KEY = "watermarks-remover-web.server";
+  const STORAGE_KEY = "unmark-web.server";
+  const STORAGE_KEY_LEGACY = "watermarks-remover-web.server";  // key used before the rename
   const DEFAULT_URL = "http://127.0.0.1:8765";
   const config = { baseUrl: "", apiKey: "", remember: false };
 
   function load() {
     try {
-      const raw = root.localStorage && root.localStorage.getItem(STORAGE_KEY);
+      const raw = root.localStorage && (root.localStorage.getItem(STORAGE_KEY) || root.localStorage.getItem(STORAGE_KEY_LEGACY));
       if (raw) {
         const saved = JSON.parse(raw);
         config.baseUrl = String(saved.baseUrl || "");
@@ -36,6 +37,8 @@
     try {
       if (config.remember) root.localStorage.setItem(STORAGE_KEY, JSON.stringify({ baseUrl: config.baseUrl, apiKey: config.apiKey }));
       else root.localStorage.removeItem(STORAGE_KEY);
+      root.localStorage.removeItem(STORAGE_KEY_LEGACY);  // superseded once we've written the new key
+
     } catch (_) { /* ignore */ }
     return config;
   }
