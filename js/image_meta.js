@@ -1,5 +1,6 @@
 /*
- * Detect and strip C2PA / AI-related metadata from PNG, JPEG, WebP, AVIF and HEIC.
+ * Detect and strip C2PA / AI-related metadata from PNG, JPEG, WebP, AVIF, HEIC,
+ * BMP, GIF and TIFF (classic and BigTIFF).
  *
  * JavaScript port of the stdlib parsers in `service/scripts/image_meta.py`
  * from guillaumemeyer/watermarks-remover (MIT): same chunk/segment/box policy,
@@ -28,8 +29,24 @@
   const be32 = (u8, p) => ((u8[p] << 24) | (u8[p + 1] << 16) | (u8[p + 2] << 8) | u8[p + 3]) >>> 0;
   const be16 = (u8, p) => (u8[p] << 8) | u8[p + 1];
   const le32 = (u8, p) => (u8[p] | (u8[p + 1] << 8) | (u8[p + 2] << 16) | (u8[p + 3] << 24)) >>> 0;
+  const le32s = (u8, p) => (u8[p] | (u8[p + 1] << 8) | (u8[p + 2] << 16) | (u8[p + 3] << 24)) | 0;
+  const le16 = (u8, p) => u8[p] | (u8[p + 1] << 8);
   const packLe32 = (n) => [n & 0xff, (n >>> 8) & 0xff, (n >>> 16) & 0xff, (n >>> 24) & 0xff];
   const packBe32 = (n) => [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff];
+
+  /* TIFF needs both byte orders and, for BigTIFF, 64-bit offsets. Values are
+   * carried as JS numbers: exact below 2^53, which no real file reaches. */
+  const u16at = (u8, p, le) => (le ? le16(u8, p) : be16(u8, p));
+  const u32at = (u8, p, le) => (le ? le32(u8, p) : be32(u8, p));
+  const u64at = (u8, p, le) => (le
+    ? le32(u8, p) + le32(u8, p + 4) * 4294967296
+    : be32(u8, p) * 4294967296 + be32(u8, p + 4));
+  const packU16 = (n, le) => (le ? [n & 0xff, (n >>> 8) & 0xff] : [(n >>> 8) & 0xff, n & 0xff]);
+  const packU32 = (n, le) => (le ? packLe32(n) : packBe32(n));
+  const packU64 = (n, le) => {
+    const lo = n >>> 0, hi = Math.floor(n / 4294967296) >>> 0;
+    return le ? packLe32(lo).concat(packLe32(hi)) : packBe32(hi).concat(packBe32(lo));
+  };
 
   /** Case-insensitive substring scan of a byte blob (latin-1 view), like upstream _contains_any. */
   function containsAny(u8, needles) {
@@ -54,6 +71,9 @@
       if (AVIF_BRANDS.some((b) => header.includes(b))) return "avif";
       if (HEIC_BRANDS.some((b) => header.includes(b))) return "heic";
     }
+    if (u8.length >= 2 && u8[0] === 0x42 && u8[1] === 0x4d) return "bmp";
+    if (u8.length >= 6 && ["GIF87a", "GIF89a"].includes(latin1(u8.subarray(0, 6)))) return "gif";
+    if (tiffLayout(u8) !== null) return "tiff";
     return "unknown";
   }
 
@@ -393,12 +413,509 @@
     return { data: concat(out), actions };
   }
 
+  // ---------------------------------------------------------------- BMP
+  /* BMP has no standardized metadata container. The only realistic place
+   * provenance data can live is after the pixel payload, so the payload extent
+   * is computed from the DIB header and pixel bytes are never scanned —
+   * compressed or embedded-image data cannot false-positive. */
+  function bmpPayloadExtent(u8) {
+    if (u8.length < 30 || u8[0] !== 0x42 || u8[1] !== 0x4d) return null;
+    const pixelOffset = le32(u8, 10);
+    const dibSize = le32(u8, 14);
+    if (dibSize < 40 || 14 + dibSize > u8.length) return null;
+    const width = le32s(u8, 18);
+    const height = le32s(u8, 22);
+    const bpp = le16(u8, 28);
+    const compression = le32(u8, 30);
+    const sizeImage = le32(u8, 34);
+    if (width <= 0 || bpp === 0 || pixelOffset > u8.length) return null;
+    let size;
+    if (compression === 0) {              // BI_RGB: rows padded to 4 bytes
+      const rowSize = Math.floor((width * bpp + 31) / 32) * 4;
+      size = rowSize * Math.abs(height);
+    } else if (sizeImage) {
+      size = sizeImage;
+    } else {
+      return null;                        // unparseable: stay conservative
+    }
+    return { pixelOffset, size };
+  }
+
+  function bmpTrailing(u8) {
+    const extent = bmpPayloadExtent(u8);
+    if (extent === null) return new Uint8Array(0);
+    const end = extent.pixelOffset + extent.size;
+    return end < u8.length ? u8.subarray(end) : new Uint8Array(0);
+  }
+
+  function inspectBmp(u8) {
+    if (u8.length < 14 || u8[0] !== 0x42 || u8[1] !== 0x4d) {
+      return { hasC2pa: false, hasAi: false, findings: ["not a BMP"] };
+    }
+    const findings = [];
+    let hasC2pa = false, hasAi = false;
+    const trailing = bmpTrailing(u8);
+    if (trailing.length) {
+      const hits = containsAny(trailing, ALL_HINTS);
+      if (hits.length) {
+        hasAi = true;
+        if (hits.some((h) => C2PA_STRONG.has(h.toLowerCase()))) hasC2pa = true;
+        findings.push(`BMP trailing metadata: ${hits.slice(0, 6).join(", ")}`);
+      } else {
+        findings.push(`BMP has ${trailing.length} unrecognized trailing byte(s)`);
+      }
+    } else {
+      findings.push("BMP has no metadata (header-only raster format)");
+    }
+    return { hasC2pa, hasAi: hasAi || hasC2pa, findings };
+  }
+
+  function stripBmp(u8, { stripAllMetadata = true } = {}) {
+    if (u8.length < 14 || u8[0] !== 0x42 || u8[1] !== 0x4d) throw new Error("not BMP");
+    const extent = bmpPayloadExtent(u8);
+    if (extent === null) return { data: u8, actions: ["BMP header not fully parsed; left unchanged"] };
+    const end = extent.pixelOffset + extent.size;
+    if (end >= u8.length) return { data: u8, actions: ["no BMP trailing metadata to strip"] };
+    const trailing = u8.subarray(end);
+    const hits = containsAny(trailing, ALL_HINTS);
+    if (!stripAllMetadata && !hits.length) {
+      return { data: u8, actions: ["BMP trailing bytes kept (keep-non-ai-metadata)"] };
+    }
+    const out = u8.slice(0, end);
+    out.set(packLe32(end), 2);            // rewrite the file-size field
+    const reason = hits.length ? ` (${hits.slice(0, 4).join(", ")})` : "";
+    return { data: out, actions: [`drop ${trailing.length} BMP trailing byte(s)${reason}`] };
+  }
+
+  // ---------------------------------------------------------------- GIF
+  const GIF_XMP_APPLICATION_ID = "XMP DataXMP";
+  // Application extensions that control rendering rather than carrying
+  // provenance; dropping them would change animation looping or color.
+  const GIF_CONTROL_APPLICATION_IDS = ["NETSCAPE2.0", "ICCRGBG1012"];
+
+  const isGif = (u8) => u8.length >= 6 && (latin1(u8.subarray(0, 6)) === "GIF87a" || latin1(u8.subarray(0, 6)) === "GIF89a");
+
+  /** [end, label, payload] for the extension block at `start` (0x21), or null. */
+  function gifExtensionInfo(u8, start, n) {
+    if (start + 2 > n) return null;
+    const label = u8[start + 1];
+    let pos = start + 2;
+    const parts = [];
+    while (pos < n) {
+      const size = u8[pos];
+      pos += 1;
+      if (size === 0) return { end: pos, label, payload: concat(parts) };
+      if (pos + size > n) return null;
+      parts.push(u8.subarray(pos, pos + size));
+      pos += size;
+    }
+    return null;
+  }
+
+  /** Offset just past the image block starting at `start` (0x2C), or null. */
+  function gifImageEnd(u8, start, n) {
+    let pos = start + 1;
+    if (pos + 9 > n) return null;
+    const packed = u8[pos + 8];
+    pos += 9;
+    if (packed & 0x80) pos += 3 * (1 << ((packed & 0x07) + 1));  // local color table
+    if (pos >= n) return null;
+    pos += 1;                                                     // LZW minimum code size
+    while (pos < n) {
+      const size = u8[pos];
+      pos += 1;
+      if (size === 0) return pos;
+      if (pos + size > n) return null;
+      pos += size;
+    }
+    return null;
+  }
+
+  function inspectGif(u8) {
+    if (!isGif(u8)) return { hasC2pa: false, hasAi: false, findings: ["not a GIF"] };
+    const findings = [];
+    let hasC2pa = false, hasAi = false;
+    const n = u8.length;
+    let pos = 6;
+    if (pos + 7 > n) return { hasC2pa: false, hasAi: false, findings: ["truncated GIF header"] };
+    const packed = u8[pos + 4];
+    pos += 7;
+    if (packed & 0x80) pos += 3 * (1 << ((packed & 0x07) + 1));   // global color table
+    while (pos < n) {
+      const block = u8[pos];
+      if (block === 0x3b) break;                                  // trailer
+      if (block === 0x21) {
+        const info = gifExtensionInfo(u8, pos, n);
+        if (info === null) { findings.push("truncated GIF extension"); break; }
+        const { end, label, payload } = info;
+        if (label === 0xfe) {
+          findings.push("GIF comment extension present");
+          const hits = containsAny(payload, ALL_HINTS);
+          if (hits.length) { hasAi = true; findings.push(`GIF comment: ${hits.slice(0, 6).join(", ")}`); }
+        } else if (label === 0xff) {
+          const ident = latin1(payload.subarray(0, 11));
+          if (ident === GIF_XMP_APPLICATION_ID) {
+            findings.push("GIF XMP application extension present");
+            const hits = containsAny(payload, ALL_HINTS);
+            if (hits.length) { hasAi = true; findings.push(`GIF XMP: ${hits.slice(0, 6).join(", ")}`); }
+          } else if (["c2pa", "jumb", "C2PA", "JUMB"].some((m) => ident.includes(m))) {
+            hasC2pa = true;
+            findings.push("GIF application extension (possible C2PA)");
+          }
+        }
+        pos = end;
+      } else if (block === 0x2c) {
+        const end = gifImageEnd(u8, pos, n);
+        if (end === null) { findings.push("truncated GIF image block"); break; }
+        pos = end;
+      } else {
+        pos += 1;
+      }
+    }
+    const whole = containsAny(u8, C2PA_MARKERS);
+    if (whole.length && !hasC2pa) {
+      hasC2pa = true;
+      findings.push(`byte-scan C2PA markers: ${whole.slice(0, 6).join(", ")}`);
+    }
+    if (!findings.length) findings.push("no GIF metadata extensions found");
+    return { hasC2pa, hasAi: hasAi || hasC2pa, findings };
+  }
+
+  function stripGif(u8, { stripAllMetadata = true } = {}) {
+    if (!isGif(u8)) throw new Error("not GIF");
+    const actions = [];
+    const parts = [u8.subarray(0, 6)];
+    const n = u8.length;
+    let pos = 6;
+    if (pos + 7 > n) throw new Error("truncated GIF header");
+    const packed = u8[pos + 4];
+    parts.push(u8.subarray(pos, pos + 7));
+    pos += 7;
+    if (packed & 0x80) {
+      const gctSize = 3 * (1 << ((packed & 0x07) + 1));
+      parts.push(u8.subarray(pos, pos + gctSize));
+      pos += gctSize;
+    }
+    while (pos < n) {
+      const block = u8[pos];
+      if (block === 0x3b) { parts.push(u8.subarray(pos)); break; }   // trailer
+      if (block === 0x21) {
+        const info = gifExtensionInfo(u8, pos, n);
+        if (info === null) { parts.push(u8.subarray(pos)); break; }
+        const { end, label, payload } = info;
+        let drop = false, name = "extension";
+        if (label === 0xfe) {
+          name = "comment";
+          drop = stripAllMetadata || containsAny(payload, ALL_HINTS).length > 0;
+        } else if (label === 0xff) {
+          const ident = latin1(payload.subarray(0, 11));
+          const markerHit = containsAny(payload, ALL_HINTS).length > 0;
+          if (ident === GIF_XMP_APPLICATION_ID) {
+            name = "XMP application";
+            drop = stripAllMetadata || markerHit;
+          } else if (GIF_CONTROL_APPLICATION_IDS.includes(ident)) {
+            name = "control application";
+            drop = markerHit;                 // keep looping/ICC unless it carries markers
+          } else {
+            name = "application";
+            drop = stripAllMetadata || markerHit;
+          }
+        }
+        if (drop) actions.push(`drop GIF ${name} extension`);
+        else parts.push(u8.subarray(pos, end));
+        pos = end;
+      } else if (block === 0x2c) {
+        const end = gifImageEnd(u8, pos, n);
+        if (end === null) { parts.push(u8.subarray(pos)); break; }
+        parts.push(u8.subarray(pos, end));
+        pos = end;
+      } else {
+        parts.push(u8.subarray(pos, pos + 1));
+        pos += 1;
+      }
+    }
+    if (!actions.length) actions.push("no GIF metadata blocks removed (already clean or none matched)");
+    return { data: concat(parts), actions };
+  }
+
+  // ---------------------------------------------------------------- TIFF (classic + BigTIFF)
+  const TIFF_TYPE_SIZES = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8 };
+
+  // Provenance / descriptive metadata tags stripped when cleaning TIFF.
+  const TIFF_META_TAG_NAMES = {
+    269: "DocumentName", 270: "ImageDescription", 271: "Make", 272: "Model", 305: "Software",
+    306: "DateTime", 315: "Artist", 316: "HostComputer", 33432: "Copyright", 40091: "XPTitle",
+    40092: "XPComment", 40093: "XPAuthor", 40094: "XPKeywords", 40095: "XPSubject", 700: "XMP",
+    33723: "IPTC/NAA", 34377: "Photoshop", 34665: "ExifIFD", 34853: "GPSInfo", 37500: "MakerNote",
+  };
+  const TIFF_DROP_TAGS = new Set(Object.keys(TIFF_META_TAG_NAMES).map(Number));
+
+  // Structural tags that must survive even when their payload looks marker-ish
+  // (offset lists, color tables, compression tables, DNG core tags).
+  const TIFF_KEEP_TAGS = new Set([
+    254, 255, 256, 257, 258, 259, 262, 263, 264, 265, 266, 273, 274, 277, 278, 279, 282, 283, 284,
+    285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 301, 302, 304, 320, 321, 322,
+    323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 336, 338, 339, 340, 341, 342, 343,
+    344, 345, 346, 347, 512, 513, 514, 515, 517, 518, 519, 520, 521, 529, 530, 531, 532, 33421,
+    33422, 33423, 50706, 50707, 50708, 50709, 50710, 50711, 50712, 50713, 50714, 50715, 50716,
+    50717, 50718, 50719, 50720, 50721, 50722, 50723, 50724, 50725, 50726, 50727, 50728, 50729,
+    50730, 50731, 50732, 50733, 50734, 50735, 50736, 50737, 50738, 50739, 50740, 50741,
+  ]);
+  const TIFF_SUB_IFD_TAGS = [34665, 34853, 40965];
+  const MAX_TIFF_IFDS = 4096;
+
+  /** {le, bigtiff} for a classic or BigTIFF header, else null. */
+  // Compared as bytes, not latin-1 text: two of the four signatures contain a
+  // NUL, which has no business being written into a source file.
+  const TIFF_SIGS = [
+    { sig: [0x49, 0x49, 0x2a, 0x00], le: true, bigtiff: false },   // II*\0
+    { sig: [0x4d, 0x4d, 0x00, 0x2a], le: false, bigtiff: false },  // MM\0*
+    { sig: [0x49, 0x49, 0x2b, 0x00], le: true, bigtiff: true },    // II+\0  BigTIFF
+    { sig: [0x4d, 0x4d, 0x00, 0x2b], le: false, bigtiff: true },   // MM\0+  BigTIFF
+  ];
+
+  function tiffLayout(u8) {
+    if (u8.length < 4) return null;
+    for (const c of TIFF_SIGS) {
+      if (c.sig.every((b, i) => u8[i] === b)) return { le: c.le, bigtiff: c.bigtiff };
+    }
+    return null;
+  }
+
+  /* Parse every reachable IFD. Entries carry the raw inline field bytes so a
+   * kept entry can be written back byte-identically; valueOffset is null when
+   * the value fits inline. Cycle-protected with a hard cap. */
+  function parseTiffIfds(u8) {
+    const layout = tiffLayout(u8);
+    if (layout === null) throw new Error("not a TIFF");
+    const { le, bigtiff } = layout;
+    const n = u8.length;
+    const countLen = bigtiff ? 8 : 2;
+    const offLen = bigtiff ? 8 : 4;
+    const entrySize = bigtiff ? 20 : 12;
+    const headerSize = bigtiff ? 16 : 8;
+    const readCount = (p) => (bigtiff ? u64at(u8, p, le) : u16at(u8, p, le));
+    const readOff = (p) => (bigtiff ? u64at(u8, p, le) : u32at(u8, p, le));
+    const ifds = new Map();
+    if (n < headerSize) return { le, bigtiff, ifds };
+    const first = readOff(headerSize - offLen);
+    if (first === 0 || first + countLen > n) return { le, bigtiff, ifds };
+    const seen = new Set();
+    const todo = [first];
+    while (todo.length && ifds.size < MAX_TIFF_IFDS) {
+      const off = todo.pop();
+      if (seen.has(off) || off + countLen > n) continue;
+      seen.add(off);
+      const count = readCount(off);
+      let blockLen = countLen + count * entrySize;
+      let nextPtr;
+      if (off + blockLen + offLen <= n) {
+        nextPtr = readOff(off + blockLen);
+      } else {
+        blockLen = Math.max(0, n - off - offLen);
+        nextPtr = 0;
+      }
+      const entries = [];
+      for (let i = 0; i < count; i++) {
+        const e = off + countLen + i * entrySize;
+        if (e + entrySize > n) break;
+        const tag = u16at(u8, e, le);
+        const ftype = u16at(u8, e + 2, le);
+        const fcount = bigtiff ? u64at(u8, e + 4, le) : u32at(u8, e + 4, le);
+        const value = u8.subarray(e + 4 + offLen, e + entrySize);
+        const byteSize = fcount * (TIFF_TYPE_SIZES[ftype] || 1);
+        const valueOffset = byteSize > value.length
+          ? (bigtiff ? u64at(value, 0, le) : u32at(value, 0, le))
+          : null;
+        entries.push({ tag, type: ftype, count: fcount, value, byteSize, valueOffset });
+      }
+      ifds.set(off, { count, entries, next: nextPtr, blockLen });
+      if (nextPtr) todo.push(nextPtr);
+      for (const ent of entries) {
+        if (ent.tag === 34665 || ent.tag === 34853 || ent.tag === 40965) {
+          const ptr = bigtiff ? u64at(ent.value, 0, le) : u32at(ent.value, 0, le);
+          if (ptr) todo.push(ptr);
+        }
+      }
+    }
+    return { le, bigtiff, ifds };
+  }
+
+  function tiffEntryPayload(u8, ent) {
+    if (ent.valueOffset === null) {
+      return ent.byteSize <= ent.value.length ? ent.value.subarray(0, ent.byteSize) : null;
+    }
+    return u8.subarray(ent.valueOffset, ent.valueOffset + ent.byteSize);
+  }
+
+  const sortedOffsets = (ifds) => Array.from(ifds.keys()).sort((a, b) => a - b);
+
+  function inspectTiff(u8) {
+    const findings = [];
+    let hasC2pa = false, hasAi = false;
+    let parsed;
+    try {
+      parsed = parseTiffIfds(u8);
+    } catch (_) {
+      return { hasC2pa: false, hasAi: false, findings: ["not a valid TIFF"] };
+    }
+    const { ifds } = parsed;
+    if (!ifds.size) return { hasC2pa: false, hasAi: false, findings: ["TIFF with no image file directories"] };
+    for (const off of sortedOffsets(ifds)) {
+      for (const ent of ifds.get(off).entries) {
+        const payload = tiffEntryPayload(u8, ent);
+        const hits = containsAny(payload || new Uint8Array(0), ALL_HINTS);
+        if (hits.length) {
+          if (hits.some((h) => C2PA_STRONG.has(h.toLowerCase()))) hasC2pa = true;
+          hasAi = true;
+          findings.push(`TIFF tag ${ent.tag}: ${hits.slice(0, 6).join(", ")}`);
+        }
+        const name = TIFF_META_TAG_NAMES[ent.tag];
+        if (name) {
+          const label = TIFF_SUB_IFD_TAGS.includes(ent.tag) ? "sub-IFD" : "tag";
+          findings.push(`TIFF ${label} ${ent.tag} (${name}) present`);
+        }
+      }
+    }
+    const whole = containsAny(u8, C2PA_MARKERS);
+    if (whole.length && !hasC2pa) {
+      hasC2pa = true;
+      findings.push(`byte-scan C2PA markers: ${whole.slice(0, 6).join(", ")}`);
+    }
+    if (!findings.length) findings.push("no TIFF metadata tags found");
+    return { hasC2pa, hasAi: hasAi || hasC2pa, findings };
+  }
+
+  /* Drop metadata tags without moving referenced data: each IFD entry region is
+   * patched in place and zero-padded back to its original length, so strip/tile
+   * offsets, color tables and next-IFD pointers all stay valid. */
+  function stripTiff(u8, { stripAllMetadata = true } = {}) {
+    const { le, bigtiff, ifds } = parseTiffIfds(u8);
+    if (!ifds.size) throw new Error("not a valid TIFF (no image file directories)");
+    const n = u8.length;
+    const offLen = bigtiff ? 8 : 4;
+    const readPtr = (v) => (bigtiff ? u64at(v, 0, le) : u32at(v, 0, le));
+    const packOff = (v) => (bigtiff ? packU64(v, le) : packU32(v, le));
+    const packCount = (v) => (bigtiff ? packU64(v, le) : packU16(v, le));
+    const actions = [];
+    const kept = new Map();
+    const dropRanges = [];
+    const dropIfdRanges = [];
+
+    /** Record the region and value payloads of a dropped sub-IFD chain. */
+    function collectSubIfdDrops(ptr, seen) {
+      const sub = ifds.get(ptr);
+      if (sub === undefined || seen.has(ptr)) return;
+      seen.add(ptr);
+      dropIfdRanges.push([ptr, Math.min(ptr + sub.blockLen + offLen, n)]);
+      for (const ent of sub.entries) {
+        if (ent.tag === 34665 || ent.tag === 34853) {
+          const p2 = readPtr(ent.value);
+          if (p2) collectSubIfdDrops(p2, seen);
+        } else if (ent.valueOffset !== null) {
+          if (ent.valueOffset + ent.byteSize <= n) dropRanges.push([ent.valueOffset, ent.valueOffset + ent.byteSize]);
+        }
+      }
+    }
+
+    for (const off of sortedOffsets(ifds)) {
+      const keepHere = [];
+      for (const ent of ifds.get(off).entries) {
+        const tag = ent.tag;
+        const payload = tiffEntryPayload(u8, ent);
+        let markerHit = containsAny(payload || new Uint8Array(0), ALL_HINTS).length > 0;
+        if (tag === 34665 || tag === 34853) {
+          const ptr = readPtr(ent.value);
+          const sub = ifds.get(ptr);
+          if (sub !== undefined) {
+            const subBlob = u8.subarray(ptr, Math.min(ptr + sub.blockLen + offLen, n));
+            markerHit = markerHit || containsAny(subBlob, ALL_HINTS).length > 0;
+            for (const sent of sub.entries) {
+              const sPayload = tiffEntryPayload(u8, sent);
+              if (containsAny(sPayload || new Uint8Array(0), ALL_HINTS).length) { markerHit = true; break; }
+            }
+          }
+        }
+        let drop = false;
+        if (TIFF_DROP_TAGS.has(tag)) drop = stripAllMetadata || markerHit;
+        else if (markerHit && !TIFF_KEEP_TAGS.has(tag)) drop = true;
+        if (!drop) { keepHere.push(ent); continue; }
+        const name = TIFF_META_TAG_NAMES[tag];
+        actions.push(name ? `drop TIFF tag ${tag} (${name})` : `drop TIFF tag ${tag} (AI markers)`);
+        if (tag === 34665 || tag === 34853) {
+          collectSubIfdDrops(readPtr(ent.value), new Set());
+        } else if (ent.valueOffset !== null && ent.valueOffset + ent.byteSize <= n) {
+          dropRanges.push([ent.valueOffset, ent.valueOffset + ent.byteSize]);
+        }
+      }
+      kept.set(off, keepHere);
+    }
+
+    // Ranges still reachable from the root through kept entries must never be
+    // zeroed. An orphaned sub-IFD (its pointer dropped) contributes nothing.
+    const reachable = new Set();
+    function markReachable(off) {
+      if (reachable.has(off) || !ifds.has(off)) return;
+      reachable.add(off);
+      for (const ent of kept.get(off) || []) {
+        if (TIFF_SUB_IFD_TAGS.includes(ent.tag)) markReachable(readPtr(ent.value));
+      }
+      if (ifds.get(off).next) markReachable(ifds.get(off).next);
+    }
+    markReachable(bigtiff ? u64at(u8, 8, le) : u32at(u8, 4, le));
+
+    const referenced = [];
+    for (const off of Array.from(reachable).sort((a, b) => a - b)) {
+      for (const ent of kept.get(off) || []) {
+        if (ent.valueOffset !== null && ent.valueOffset + ent.byteSize <= n) {
+          referenced.push([ent.valueOffset, ent.valueOffset + ent.byteSize]);
+        }
+        if (TIFF_SUB_IFD_TAGS.includes(ent.tag)) {
+          const ptr = readPtr(ent.value);
+          const sub = ifds.get(ptr);
+          if (sub !== undefined) referenced.push([ptr, Math.min(ptr + sub.blockLen + offLen, n)]);
+        }
+      }
+    }
+    const covered = (ranges, start, end) => ranges.some(([s, e]) => s <= start && end <= e);
+    const zero = [];
+    for (const [s, e] of dropRanges) if (!covered(referenced, s, e)) zero.push([s, e]);
+    for (const [s, e] of dropIfdRanges) if (!covered(referenced, s, e)) zero.push([s, e]);
+
+    // Patch IFD entry regions in place, then zero dropped payloads.
+    const out = u8.slice();
+    for (const off of sortedOffsets(ifds)) {
+      const ifd = ifds.get(off);
+      const entries = kept.get(off) || [];
+      const blockParts = [new Uint8Array(packCount(entries.length))];
+      for (const ent of entries) {
+        blockParts.push(new Uint8Array(packU16(ent.tag, le)));
+        blockParts.push(new Uint8Array(packU16(ent.type, le)));
+        blockParts.push(new Uint8Array(packOff(ent.count)));
+        blockParts.push(ent.value);
+      }
+      blockParts.push(new Uint8Array(packOff(ifd.next)));
+      let block = concat(blockParts);
+      const regionLen = ifd.blockLen + offLen;
+      if (off + regionLen <= n) {
+        if (block.length > regionLen) block = block.subarray(0, regionLen);
+        out.set(block, off);
+        out.fill(0, off + block.length, off + regionLen);
+      }
+    }
+    for (const [s, e] of zero) out.fill(0, s, e);
+
+    if (!actions.length) actions.push("no TIFF metadata tags removed (already clean or none matched)");
+    return { data: out, actions };
+  }
+
   // ---------------------------------------------------------------- unified
   function inspect(u8) {
     const fmt = detectFormat(u8);
     const r = fmt === "png" ? inspectPng(u8) : fmt === "jpeg" ? inspectJpeg(u8) : fmt === "webp" ? inspectWebp(u8)
       : (fmt === "avif" || fmt === "heic") ? inspectIsobmff(u8, fmt)
-      : { hasC2pa: false, hasAi: false, findings: ["unsupported image format"] };
+      : fmt === "bmp" ? inspectBmp(u8) : fmt === "gif" ? inspectGif(u8) : fmt === "tiff" ? inspectTiff(u8)
+      : { hasC2pa: false, hasAi: false, findings: ["unsupported format (PNG/JPEG/WebP/AVIF/HEIC/BMP/GIF/TIFF)"] };
     return { format: fmt, has_c2pa: r.hasC2pa, has_ai_metadata: r.hasAi, findings: r.findings };
   }
 
@@ -409,11 +926,15 @@
     if (fmt === "jpeg") return { format: fmt, ...stripJpeg(u8, { stripAllApp: stripAllMetadata }) };
     if (fmt === "webp") return { format: fmt, ...stripWebp(u8, { stripAllMetadata }) };
     if (fmt === "avif" || fmt === "heic") return { format: fmt, ...stripIsobmff(u8, fmt, { stripAllMetadata }) };
-    throw new Error("unsupported image format (expected PNG, JPEG, WebP, AVIF or HEIC)");
+    if (fmt === "bmp") return { format: fmt, ...stripBmp(u8, { stripAllMetadata }) };
+    if (fmt === "gif") return { format: fmt, ...stripGif(u8, { stripAllMetadata }) };
+    if (fmt === "tiff") return { format: fmt, ...stripTiff(u8, { stripAllMetadata }) };
+    throw new Error("unsupported image format (expected PNG, JPEG, WebP, AVIF, HEIC, BMP, GIF or TIFF)");
   }
 
   const api = { detectFormat, inspect, clean, inspectPng, inspectJpeg, inspectWebp, inspectIsobmff,
-    stripPng, stripJpeg, stripWebp, stripIsobmff, containsAny };
+    inspectBmp, inspectGif, inspectTiff,
+    stripPng, stripJpeg, stripWebp, stripIsobmff, stripBmp, stripGif, stripTiff, containsAny };
   root.ImageMeta = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

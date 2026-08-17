@@ -6,9 +6,15 @@
 
   const BROWSER_MAX_BYTES = 64 << 20;   // 64 MiB — keeps memory sane in a tab
   const SERVER_MAX_BYTES = 256 << 20;   // upstream WATERMARKS_MAX_INPUT_BYTES default
-  const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "webp", "avif", "heic", "heif"]);
+  const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "webp", "avif", "heic", "heif", "bmp", "gif", "tif", "tiff"]);
+  // Keyed by the format ImageMeta detected, not by extension: the detector is
+  // the authority, and a chained ternary silently mislabelled AVIF/HEIC as WebP.
+  const IMAGE_MIME = {
+    png: "image/png", jpeg: "image/jpeg", webp: "image/webp", avif: "image/avif",
+    heic: "image/heic", bmp: "image/bmp", gif: "image/gif", tiff: "image/tiff",
+  };
   const TEXT_EXT = new Set(["txt", "md", "markdown", "html", "htm", "svg"]);
-  const SERVER_ONLY_EXT = new Set(["pdf", "docx", "odt"]);
+  const SERVER_ONLY_EXT = new Set(["pdf", "docx", "odt", "epub"]);
 
   const fmtBytes = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`;
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -200,7 +206,7 @@
       const u8 = new Uint8Array(await file.arrayBuffer());
       const before = ImageMeta.inspect(u8);
       const r = ImageMeta.clean(u8, { stripAllMetadata: !$("opt-keep-meta").checked });
-      const mime = r.format === "png" ? "image/png" : r.format === "jpeg" ? "image/jpeg" : "image/webp";
+      const mime = IMAGE_MIME[r.format] || "application/octet-stream";
       const findings = [];
       if (before.has_c2pa) findings.push(t("c2paFound")); else if (before.has_ai_metadata) findings.push(t("aiMetaFound"));
       findings.push(...before.findings, ...r.actions);

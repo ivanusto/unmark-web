@@ -86,6 +86,128 @@ def make_isobmff(brand: bytes, boxes: list[tuple[bytes, bytes]]) -> bytes:
     return ftyp + b"".join(iso_box(f, p) for f, p in boxes) + iso_box(b"mdat", b"\x00" * 8)
 
 
+
+# --- BMP / GIF / TIFF builders, mirroring upstream tests/test_image_formats_bmp_gif_tiff.py ---
+
+def make_bmp(trailing: bytes = b"") -> bytes:
+    pixel = b"\x00\x00\xff\xff"  # BGRA, 1x1 32-bit, no row padding
+    dib = struct.pack("<IiiHHIIiiII", 40, 1, 1, 1, 32, 0, len(pixel), 0, 0, 0, 0)
+    data_offset = 14 + len(dib)
+    header = b"BM" + struct.pack("<IHHI", data_offset + len(pixel), 0, 0, data_offset)
+    return header + dib + pixel + trailing
+
+
+def gif_extension(label: int, payload: bytes) -> bytes:
+    out = b"\x21" + bytes([label])
+    pos = 0
+    while pos < len(payload):
+        chunk = payload[pos:pos + 255]
+        out += bytes([len(chunk)]) + chunk
+        pos += 255
+    return out + b"\x00"
+
+
+def make_gif(*extensions: tuple[int, bytes]) -> bytes:
+    lsd = struct.pack("<HHBBB", 1, 1, 0x00, 0x00, 0x00)
+    image = b"\x2c" + struct.pack("<HHHHB", 0, 0, 1, 1, 0x00) + b"\x02" + b"\x02\x02\x44" + b"\x00"
+    return b"GIF89a" + lsd + b"".join(gif_extension(l, p) for l, p in extensions) + image + b"\x3b"
+
+
+GIF_XMP_PAYLOAD = b"XMP DataXMP" + XMP_AI
+
+
+def _tiff_entry(bo: str, big: bool, tag: int, ftype: int, fcount: int, value: bytes) -> bytes:
+    count_fmt = bo + ("Q" if big else "I")
+    return struct.pack(bo + "HH", tag, ftype) + struct.pack(count_fmt, fcount) + value
+
+
+def make_tiff(*, big_endian: bool = False, big: bool = False, with_meta: bool = True) -> bytes:
+    """Classic or BigTIFF with strip offsets, an ExifIFD chain and metadata tags.
+
+    Offsets are laid out by hand so the parity test exercises the in-place patch
+    path: strip data must stay byte-identical and reachable after cleaning.
+    """
+    bo = ">" if big_endian else "<"
+    off_fmt = bo + ("Q" if big else "I")
+    count_fmt = bo + ("Q" if big else "H")
+    count_len = 8 if big else 2
+    off_len = 8 if big else 4
+    entry_size = 20 if big else 12
+    header_size = 16 if big else 8
+    xmp = XMP_AI
+    make = b"Acme Corp\x00"
+    dt = b"2024:01:01 10:00:00\x00"
+    maker = b"AIGC maker\x00"
+    strip_data = b"\xaa\xbb\xcc\xdd\xee\xff\x00\x11"
+
+    def short_val(v: int) -> bytes:
+        return struct.pack(bo + "H", v) + b"\x00" * (off_len - 2)
+
+    def long_val(v: int) -> bytes:
+        return struct.pack(off_fmt, v)
+
+    base = [(256, 4, 1, long_val(1)), (257, 4, 1, long_val(1)), (258, 3, 1, short_val(8)),
+            (259, 3, 1, short_val(1)), (262, 3, 1, short_val(2)), (273, 4, 1, b"\x00" * off_len),
+            (278, 4, 1, long_val(1)), (279, 4, 1, long_val(len(strip_data)))]
+    if with_meta:
+        base += [(271, 2, len(make), b"\x00" * off_len), (700, 2, len(xmp), b"\x00" * off_len),
+                 (34665, 4, 1, b"\x00" * off_len)]
+    count = len(base)
+    ifd0_off = header_size
+    cursor = ifd0_off + count_len + count * entry_size + off_len
+
+    exif_count = 3 if with_meta else 0
+    exif_off = cursor if with_meta else 0
+    exp_payload = struct.pack(bo + "II", 1, 100)
+    exp_off = dt_off = mn_off = 0
+    if with_meta:
+        cursor += count_len + exif_count * entry_size + off_len
+        exp_off = cursor
+        cursor += len(exp_payload)
+        dt_off = cursor
+        cursor += len(dt)
+        mn_off = cursor
+        cursor += len(maker)
+
+    strip_off = cursor
+    cursor += len(strip_data)
+    make_off = cursor
+    cursor += len(make)
+    xmp_off = cursor
+
+    ifd0 = bytearray(struct.pack(count_fmt, count))
+    for tag, ftype, fcount, value in base:
+        if tag == 273:
+            ifd0 += _tiff_entry(bo, big, tag, 4, 1, long_val(strip_off))
+        elif tag == 271:
+            ifd0 += _tiff_entry(bo, big, tag, 2, len(make), long_val(make_off))
+        elif tag == 700:
+            ifd0 += _tiff_entry(bo, big, tag, 2, len(xmp), long_val(xmp_off))
+        elif tag == 34665:
+            ifd0 += _tiff_entry(bo, big, tag, 4, 1, long_val(exif_off))
+        else:
+            ifd0 += _tiff_entry(bo, big, tag, ftype, fcount, value)
+    ifd0 += struct.pack(off_fmt, 0)
+
+    if with_meta:
+        exif = bytearray(struct.pack(count_fmt, exif_count))
+        exif += _tiff_entry(bo, big, 33434, 5, 1, long_val(exp_off))
+        exif += _tiff_entry(bo, big, 36867, 2, len(dt), long_val(dt_off))
+        exif += _tiff_entry(bo, big, 37500, 2, len(maker), long_val(mn_off))
+        exif += struct.pack(off_fmt, 0)
+        tail = exp_payload + dt + maker + strip_data + make + xmp
+    else:
+        exif = b""
+        tail = strip_data + make + xmp
+
+    magic = 43 if big else 42
+    header = (b"MM" if big_endian else b"II") + struct.pack(bo + "H", magic)
+    if big:
+        header += struct.pack(bo + "H", 8) + struct.pack(bo + "H", 0)
+    header += struct.pack(off_fmt, ifd0_off)
+    return header + bytes(ifd0) + bytes(exif) + tail
+
+
 SAMPLES = {
     "png_clean": make_png([]),
     "png_text": make_png([(b"tEXt", b"Software\x00Photoshop"), (b"iTXt", b"XML:com.adobe.xmp\x00\x00\x00\x00\x00" + XMP_AI)]),
@@ -112,6 +234,20 @@ SAMPLES = {
         ])),
     ]),
     "heic_c2pa_box": make_isobmff(b"heix", [(b"c2pa", JUMBF), (b"meta", iso_meta([(b"hdlr", b"\x00" * 12 + b"pict")]))]),
+    "bmp_clean": make_bmp(),
+    "bmp_trailing_ai": make_bmp(b"digitalSourceType=trainedAlgorithmicMedia"),
+    "bmp_trailing_plain": make_bmp(b"harmless scanner note"),
+    "gif_clean": make_gif(),
+    "gif_comment_ai": make_gif((0xFE, b"Generated by OpenAI")),
+    "gif_comment_plain": make_gif((0xFE, b"just a caption")),
+    "gif_xmp": make_gif((0xFF, GIF_XMP_PAYLOAD)),
+    "gif_netscape_loop": make_gif((0xFF, b"NETSCAPE2.0" + b"\x03\x01\x00\x00")),
+    "gif_unknown_app": make_gif((0xFF, b"WHATEVER1.0" + b"payload")),
+    "tiff_le": make_tiff(),
+    "tiff_be": make_tiff(big_endian=True),
+    "tiff_le_clean": make_tiff(with_meta=False),
+    "bigtiff_le": make_tiff(big=True),
+    "bigtiff_be": make_tiff(big=True, big_endian=True),
 }
 
 
@@ -129,6 +265,12 @@ def _py_clean(data: bytes, fmt: str, strip_all: bool) -> tuple[bytes, list[str]]
         return image_meta.strip_jpeg(data, strip_all_app=strip_all)
     if fmt == "webp":
         return image_meta.strip_webp(data, strip_all_metadata=strip_all)
+    if fmt == "bmp":
+        return image_meta.strip_bmp(data, strip_all_metadata=strip_all)
+    if fmt == "gif":
+        return image_meta.strip_gif(data, strip_all_metadata=strip_all)
+    if fmt == "tiff":
+        return image_meta.strip_tiff(data, strip_all_metadata=strip_all)
     return image_meta.strip_isobmff(data, fmt, strip_all_metadata=strip_all)
 
 
@@ -139,6 +281,12 @@ def _py_inspect(data: bytes, fmt: str) -> tuple[bool, bool, list[str]]:
         return image_meta.inspect_jpeg(data)
     if fmt == "webp":
         return image_meta.inspect_webp(data)
+    if fmt == "bmp":
+        return image_meta.inspect_bmp(data)
+    if fmt == "gif":
+        return image_meta.inspect_gif(data)
+    if fmt == "tiff":
+        return image_meta.inspect_tiff(data)
     return image_meta.inspect_isobmff(data, fmt)
 
 
@@ -175,3 +323,30 @@ def test_idempotent_and_valid_structure() -> None:
         assert fmt == image_meta.detect_format(data)
         if fmt == "webp":
             assert struct.unpack("<I", once[4:8])[0] + 8 == len(once)
+
+
+def test_bmp_and_tiff_structural_invariants() -> None:
+    """Properties byte-parity cannot express: the cleaned file must still be
+    coherent, not merely identical to what upstream produced.
+    """
+    # BMP: the file-size field at offset 2 has to match the truncated length.
+    for name in ("bmp_trailing_ai", "bmp_trailing_plain"):
+        out = base64.b64decode(_js("clean", SAMPLES[name], {})["data"])
+        assert struct.unpack("<I", out[2:6])[0] == len(out), name
+
+    # TIFF is patched in place, so every offset in the file stays where it was:
+    # the pixel strip must survive byte-identical at its original offset while
+    # the metadata payloads around it are zeroed.
+    strip_data = b"\xaa\xbb\xcc\xdd\xee\xff\x00\x11"
+    for name in ("tiff_le", "tiff_be", "bigtiff_le", "bigtiff_be"):
+        src = SAMPLES[name]
+        out = base64.b64decode(_js("clean", src, {})["data"])
+        assert len(out) == len(src), name
+        off = src.index(strip_data)
+        assert out[off:off + len(strip_data)] == strip_data, name
+        for secret in (XMP_AI, b"Acme Corp", b"AIGC maker"):
+            assert secret not in out, (name, secret)
+
+    # GIF: a NETSCAPE2.0 loop extension is rendering control, not provenance.
+    kept = base64.b64decode(_js("clean", SAMPLES["gif_netscape_loop"], {})["data"])
+    assert b"NETSCAPE2.0" in kept

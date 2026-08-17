@@ -6,8 +6,8 @@
 
 Independent, browser-first web client for **[guillaumemeyer/watermarks-remover](https://github.com/guillaumemeyer/watermarks-remover)** — inspired by and compatible with its HTTP API. Not affiliated with the upstream project.
 
-- **Runs entirely in the browser** for text (Layer A: invisible Unicode / homoglyph spaces) and PNG / JPEG / WebP / AVIF / HEIC metadata (C2PA, EXIF, XMP, text chunks). No uploads, no analytics, no web fonts, no third-party requests.
-- **Optionally drives the upstream Python service** (`server.py`) for everything else — PDF, DOCX, ODT, full HTML/SVG/Markdown container cleaning, and pixel-domain backends.
+- **Runs entirely in the browser** for text (Layer A: invisible Unicode / homoglyph spaces) and PNG / JPEG / WebP / AVIF / HEIC / BMP / GIF / TIFF metadata (C2PA, EXIF, XMP, text chunks). No uploads, no analytics, no web fonts, no third-party requests.
+- **Optionally drives the upstream Python service** (`server.py`) for everything else — PDF, DOCX, ODT, EPUB, full HTML/SVG/Markdown container cleaning, and pixel-domain backends.
 - The JavaScript engines are **line-for-line ports of upstream's `text_unicode.py` and `image_meta.py`**, and a parity test suite asserts identical output (same characters kept/stripped, same bytes out of the image parsers).
 
 Live demo: [https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/unmark-web/) · Local: open `index.html` or run `python3 serve_local.py`.
@@ -19,7 +19,8 @@ Live demo: [https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/u
 | Pasted text / `.txt` | Layer A: zero-width & bidi controls, variation selectors, tag chars, PUA, other `Cf`; space homoglyphs; optional NFKC / Latin confusables. Preserves load-bearing invisibles (emoji ZWJ/VS16, Persian/Indic ZWNJ, flag tags, Mongolian FVS, Khmer vowels, Hangul fillers, Arabic Cf) exactly like upstream, with a "paranoid" toggle. | same |
 | `.md` `.html` `.svg` | Layer A on the text only (metadata tags/frontmatter untouched — flagged in the UI) | full container cleaning (frontmatter keys, `<meta generator>`, XMP, …) |
 | PNG / JPEG / WebP / AVIF / HEIC | drops `tEXt/zTXt/iTXt/eXIf/caBX/c2*` chunks, `APPn` (except JFIF) + `COM` segments, `EXIF/XMP/ICCP/C2PA` RIFF chunks with VP8X flag fix-up, and `jumb/c2pa/uuid` (XMP) ISOBMFF boxes plus their `meta` sub-boxes. Pixels are untouched (no canvas re-encode). "Keep non-AI metadata" mode only drops blocks with AI/C2PA hints. | same, plus optional pixel-domain backends if installed |
-| PDF / DOCX / ODT | — (needs server) | yes |
+| BMP / GIF / TIFF | BMP: drops the trailing bytes after the pixel payload (the only place BMP metadata can live) and rewrites the file-size field. GIF: drops comment and XMP/unknown application extensions, keeping NETSCAPE2.0 looping and ICC. TIFF (classic and BigTIFF): walks the IFD chains and drops XMP/EXIF/GPS/IPTC/Photoshop/MakerNote tags, patching each IFD in place so strip and tile offsets stay valid. | same |
+| PDF / DOCX / ODT / EPUB | — (needs server) | yes |
 | Statistical / pixel watermarks (SynthID, …) | **no** — out of scope for both; see upstream Layer B | via upstream backends only |
 
 ## Connecting a server
@@ -51,7 +52,7 @@ node scripts/check-upstream.mjs                                                 
 There is no `package.json` here — nothing at runtime or in the test suite needs npm, so the upstream check runs straight through `node`, exactly as [the workflow](.github/workflows/upstream-check.yml) does. It exits `0` when the recorded hashes still match, `1` on drift, and `2` when it could not check at all (network, rate limit, bad manifest) — an unreachable source is never reported as drift.
 
 - `js/layer_a.js` — port of `text_unicode.py` (`clean`, `inspect`, `decide`)
-- `js/image_meta.js` — port of `image_meta.py` (PNG/JPEG/WebP/AVIF/HEIC inspect + strip)
+- `js/image_meta.js` — port of `image_meta.py` (PNG/JPEG/WebP/AVIF/HEIC/BMP/GIF/TIFF inspect + strip)
 - `js/api.js` — client for `/health /capabilities /inspect /clean`
 - `js/i18n.js`, `js/app.js`, `css/app.css`, `index.html` — UI (English / 繁體中文 / 简体中文, light/dark, keyboard-accessible). The locale is picked from `navigator.languages` and remembered in `localStorage`; adding a language is one entry in `LANGS` plus one dictionary in `js/i18n.js`.
 - `tests/test_layer_a_parity.py`, `tests/test_image_meta_parity.py` — cross-engine parity vs the upstream checkout (skipped if `node` or the checkout is missing)
