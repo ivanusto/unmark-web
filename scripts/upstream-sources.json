@@ -6,7 +6,7 @@
       "id": "watermarks-remover/service/scripts/text_unicode.py",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/text_unicode.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/text_unicode.py",
-      "sha256": "166caa04ab0f9fecc5d83d1931bb6b7213e2e17dedaa02fd6213ca4293640e98",
+      "sha256": "cd21c5700184a6bb4a43089f546531a2692bf140413954ea9b93f4a67f1f3a5e",
       "mirrors": [
         "js/layer_a.js",
         "tests/test_layer_a_parity.py"
@@ -16,7 +16,7 @@
       "id": "watermarks-remover/service/scripts/image_meta.py",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/image_meta.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/image_meta.py",
-      "sha256": "3e222cd1a66fef9b454080e88cf11b04e7c596f83dfb8d970a62a47095386b28",
+      "sha256": "0da03585c85732d61152fd79bd593fe0cb131596ced79d7d9b916dfc4bffa3da",
       "mirrors": [
         "js/image_meta.js",
         "tests/test_image_meta_parity.py"
