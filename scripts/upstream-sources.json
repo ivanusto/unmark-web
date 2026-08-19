@@ -16,7 +16,7 @@
       "id": "watermarks-remover/service/scripts/image_meta.py",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/image_meta.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/image_meta.py",
-      "sha256": "cf2ff1a6f4c26a336e964323e8d5a8cd6de8ea5d49d1de0855703b793b57a51e",
+      "sha256": "422dbbea5eff172b78a6f38ade753d11857d62ff4811b97084000062c5622e4a",
       "mirrors": [
         "js/image_meta.js",
         "tests/test_image_meta_parity.py"
