@@ -73,7 +73,7 @@
       if (signal.aborted) ctrl.abort();
       else signal.addEventListener("abort", abort, { once: true });
     }
-    let res;
+    let res, payload = null;
     try {
       // Same-origin whenever the combined path is absolute — covers "/api",
       // "/llm" and the bare "" base used by /llm-config alike.
@@ -83,15 +83,22 @@
         method, headers: headers(!!body, auth), body: body ? JSON.stringify(body) : undefined,
         mode: "cors", cache: "no-store", signal: ctrl.signal,
       });
+      // fetch settles once the headers land, so the body can still be pending
+      // here. The timeout and the caller's signal stay armed until it is read,
+      // or a server that flushes headers early would be uncancellable.
+      try {
+        payload = await res.json();
+      } catch (e) {
+        if (e.name === "AbortError") throw e;   // cancelled mid-body, not a parse failure
+        /* non-JSON body — payload stays null */
+      }
     } catch (e) {
-      if (e.name === "AbortError" && !timedOut) throw new ApiError("cancelled", 0);
-      throw new ApiError(e.name === "AbortError" ? "request timed out" : "network/CORS error — is the server running and allowing this origin?", 0);
+      if (e.name === "AbortError") throw new ApiError(timedOut ? "request timed out" : "cancelled", 0);
+      throw new ApiError("network/CORS error — is the server running and allowing this origin?", 0);
     } finally {
       clearTimeout(t);
       if (signal) signal.removeEventListener("abort", abort);
     }
-    let payload = null;
-    try { payload = await res.json(); } catch (_) { /* non-JSON */ }
     if (!res.ok || (payload && payload.ok === false)) {
       const msg = (payload && payload.error) || `HTTP ${res.status}`;
       throw new ApiError(msg, res.status);
