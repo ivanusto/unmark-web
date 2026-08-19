@@ -1,0 +1,57 @@
+{
+  "commitment": {
+    "algorithm": "sha256",
+    "canonicalization": "JSON sort_keys compact UTF-8 of config",
+    "value": "05d5dc446fd1e3203ce429abefd346ef12f1095223d4a4dd0bea911c95d49148"
+  },
+  "config": {
+    "context_history_size": 1024,
+    "implementation": "sparse_support",
+    "keys": [
+      1595753567,
+      211993291,
+      1626610973,
+      123719813,
+      571240442,
+      632688358,
+      1890107887,
+      900780959,
+      1571948621,
+      1887750956,
+      1569774007,
+      1368496691,
+      272393319,
+      142870043,
+      753507233,
+      1955472042,
+      998209172,
+      280344101,
+      610001401,
+      1919749651,
+      1680992384,
+      1738322143,
+      1720502829,
+      829000807,
+      2130571033,
+      638104239,
+      1888337225,
+      1378139789,
+      1706066356,
+      525438165
+    ],
+    "ngram_len": 5,
+    "sampling_table_seed": 0,
+    "sampling_table_size": 65536,
+    "skip_first_ngram_calls": false,
+    "temperature": 0.7,
+    "top_k": 100,
+    "top_p": 1.0
+  },
+  "created_at": "2026-08-18T06:04:33.127034+00:00",
+  "disclosure": {
+    "purpose": "Research reproduction only; do not reuse as a deployment key.",
+    "status": "public",
+    "watermark_key_id": "key_a"
+  },
+  "schema": "synthid-watermark-config/v1"
+}

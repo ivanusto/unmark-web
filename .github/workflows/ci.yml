@@ -15,5 +15,5 @@ jobs:
         with: { node-version: "22" }
       - run: pip install -r requirements-dev.txt
       - run: for f in js/*.js; do node --check "$f"; done
-      - run: python3 -m py_compile serve_local.py
+      - run: python3 -m py_compile serve_local.py sidecar/unmark_stat.py
       - run: WATERMARKS_UPSTREAM_DIR="$PWD/upstream" pytest -q

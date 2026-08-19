@@ -330,8 +330,11 @@
           const c = cmp[r.detector]; const a = c && c.after;
           const tdB = el("td"); tdB.appendChild(statusBadge(r.status)); tdB.appendChild(el("div", "inspect-score", fmtScore(r))); tr.appendChild(tdB);
           const tdA = el("td"); if (a) { tdA.appendChild(statusBadge(a.status)); tdA.appendChild(el("div", "inspect-score", fmtScore(a))); } else tdA.textContent = "—"; tr.appendChild(tdA);
-          const same = c ? c.same : false;
-          tr.appendChild(el("td", "inspect-delta " + (same ? "same" : "changed"), t(same ? "inspect.unchanged" : "inspect.changed")));
+          let deltaText, deltaCls;
+          if (!c || !c.sameStatus) { deltaText = t("inspect.changedTo", { from: t("status." + r.status), to: t("status." + (a ? a.status : "error")) }); deltaCls = "changed"; }
+          else if (c.same) { deltaText = t("inspect.unchanged"); deltaCls = "same"; }
+          else { deltaText = t("inspect.sameVerdict", { delta: (c.delta > 0 ? "+" : "") + (Number.isInteger(c.delta) ? String(c.delta) : c.delta.toFixed(3)) }); deltaCls = "same"; }
+          tr.appendChild(el("td", "inspect-delta " + deltaCls, deltaText));
           tr.appendChild(evidenceCell(r));   // what was found *before* cleaning is the evidence worth reading
         } else {
           const tdS = el("td"); tdS.appendChild(statusBadge(r.status)); tr.appendChild(tdS);
@@ -360,6 +363,7 @@
     if (insp.compare) {
       const stat = insp.compare.filter((c) => c.layer === "statistical" && c.before && !c.before.heuristic && ["detected", "uncertain", "clean"].includes(c.before.status));
       if (stat.length && stat.every((c) => c.same)) add("overall.cleanNoEffect");
+      else if (stat.length && stat.every((c) => c.sameStatus)) add("overall.cleanNoEffectDelta");
       else if (stat.length) add("overall.cleanChanged");
       const ch = insp.compare.filter((c) => c.layer === "character");
       if (ch.length) add(ch.every((c) => c.after && c.after.status === "clean") ? "overall.characterCleaned" : "overall.characterResidual");
