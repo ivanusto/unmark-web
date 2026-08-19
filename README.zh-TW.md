@@ -15,7 +15,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img alt="在瀏覽器中執行的「文字」分頁：左側是貼上的原文，右側是清洗後的版本，中間的「檢測結果」列出被移除的零寬字元、零寬不斷行空格與軟連字號，以及被正規化的全形空格；下方是選用的 AI 改寫面板與它產生的改寫結果。" src="docs/screenshot-light.png">
+  <img alt="在瀏覽器中執行的「文字」分頁：左側是貼上的原文，右側是清洗後的版本，中間的「檢測結果」列出被移除的軟連字號、零寬字元與零寬不斷行空格，以及被正規化的全形空格；下方是選用的 AI 改寫面板，已啟用但尚未執行。" src="docs/screenshot-light.png">
 </picture>
 
 ## 功能範圍（與不做的事）
@@ -112,7 +112,10 @@ sidecar/.venv/bin/python sidecar/unmark_stat.py            # 127.0.0.1:8767
 python3 serve_local.py --stat-upstream http://127.0.0.1:8767
 ```
 
-<img alt="檢測器分頁在「以 Layer A 清理並重新檢測」一段 SynthID 浮水印樣本之後：字元層從 40 個零寬空格變為乾淨，Kirchenbauer 維持乾淨、SynthID-Text 維持偵測到且判定相同；總結寫著 Layer A 清理沒有改變任何統計型判定。" src="docs/screenshot-inspector.png">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-inspector-dark.png">
+  <img alt="檢測器分頁在「以 Layer A 清理並重新檢測」一段 SynthID 浮水印樣本之後：字元層從 30 個零寬空格變為乾淨，Kirchenbauer 維持乾淨、SynthID-Text 維持偵測到且判定相同；總結寫著 Layer A 清理沒有改變任何統計型判定。" src="docs/screenshot-inspector-light.png">
+</picture>
 
 接著在檢測器分頁：用 SynthID-Text、key **A** 生成 → 以 key A 檢測（偵測到）→ 切到 key **B**（乾淨／不確定）→「以 Layer A 清理並重新檢測」（分數不變）。兩個世界：字元層歸零，統計層紋風不動。
 

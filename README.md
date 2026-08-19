@@ -15,7 +15,7 @@ Live demo: [https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/u
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img alt="The Text tab running in the browser: pasted prose on the left, the cleaned copy on the right, a Findings row listing the removed zero-width, no-break and soft-hyphen characters and the normalised ideographic space, and below them the optional AI rewrite panel showing its rewritten output." src="docs/screenshot-light.png">
+  <img alt="The Text tab in the browser: the pasted prose on the left, the cleaned copy on the right, a Findings row listing the removed soft hyphen, zero-width and no-break spaces and the normalised ideographic space, and below them the optional AI rewrite panel, ready but not yet run." src="docs/screenshot-light.png">
 </picture>
 
 ## What it does (and does not)
@@ -112,7 +112,10 @@ sidecar/.venv/bin/python sidecar/unmark_stat.py            # 127.0.0.1:8767
 python3 serve_local.py --stat-upstream http://127.0.0.1:8767
 ```
 
-<img alt="The Inspector tab after "Clean (Layer A) & re-inspect" on a SynthID-watermarked sample: the character layer goes from 40 zero-width spaces to clean, while Kirchenbauer stays clean and SynthID-Text stays detected with the same verdict; the Overall box says Layer A cleaning left every statistical verdict unchanged." src="docs/screenshot-inspector.png">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-inspector-dark.png">
+  <img alt="The Inspector tab after &quot;Clean (Layer A) &amp; re-inspect&quot; on a SynthID-watermarked sample: the character layer goes from 30 zero-width spaces to clean, while Kirchenbauer stays clean and SynthID-Text stays detected with the same verdict; the Overall box says Layer A cleaning left every statistical verdict unchanged." src="docs/screenshot-inspector-light.png">
+</picture>
 
 Then, in the Inspector: *Generate* with SynthID-Text and key **A** → *Inspect* with key A (detected) → switch to key **B** (clean / uncertain) → *Clean (Layer A) & re-inspect* (scores unchanged). Two worlds: the character layer goes to zero, the statistical layer does not move.
 
