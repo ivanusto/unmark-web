@@ -45,10 +45,14 @@ API 金鑰只會以 `Authorization: Bearer …` 送往你所設定的 URL，而�
 清洗只處理記號，不會動到文句本身。如果你還想把文字從 AI 的腔調裡改寫出來，`serve_local.py` 可以代理**你自己的 OpenAI 相容對話端點**——本機模型或任何你自架的服務都行：
 
 ```bash
+# --llm-upstream  base URL，不含 /v1 後綴
+# --llm-model     選填；用來預填模型欄位
+# --llm-api-key   選填；只留在伺服器端
 python3 serve_local.py \
-  --llm-upstream http://<your-llm-host>:<port> \    # base URL，不含 /v1 後綴
-  --llm-model <model-id> \                          # 選填；用來預填模型欄位
-  --llm-api-key "$YOUR_KEY"                         # 選填；只留在伺服器端
+  --llm-upstream http://<your-llm-host>:<port> \
+  --llm-model <model-id> \
+  --llm-api-key "$YOUR_KEY"
+
 # 也可以用環境變數：UNMARK_LLM_URL / UNMARK_LLM_MODEL / UNMARK_LLM_API_KEY
 ```
 
