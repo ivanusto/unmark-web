@@ -29,7 +29,7 @@ async function fetchText(url) {
   try {
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: { 'user-agent': 'md-to-wordpress-converter upstream check' },
+      headers: { 'user-agent': 'unmark-web upstream check' },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
     return await res.text();
