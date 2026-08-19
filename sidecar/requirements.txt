@@ -1,0 +1,8 @@
+# Runtime for sidecar/unmark_stat.py (GPU strongly recommended; ~8 GB weights).
+# Pick the torch build for your CUDA/ROCm/CPU from https://pytorch.org/get-started/locally/
+torch>=2.4
+transformers>=4.57
+safetensors>=0.4
+accelerate>=0.30
+huggingface_hub>=0.24
+numpy

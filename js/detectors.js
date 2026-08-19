@@ -288,15 +288,20 @@
     };
   }
 
-  /* Did cleaning change a detector's answer? `same` means status and score are
-   * (numerically) unchanged — the honest "your cleaner did not touch this". */
+  /* Did cleaning change a detector's answer? `sameStatus` is the verdict
+   * (status) being unchanged; `delta` is the numeric score movement when both
+   * sides have one. Tokenisation shifts when invisible characters are removed,
+   * so a statistical score may move a little while the verdict stands — the UI
+   * reports both rather than calling a 0.967 → 0.999 posterior "changed". */
   function compare(before, after) {
     const map = Object.fromEntries(after.map((r) => [r.detector, r]));
     return before.map((b) => {
       const a = map[b.detector] || null;
       const num = (x) => (typeof x === "number" ? x : null);
-      const same = !!a && a.status === b.status && (num(a.score) === num(b.score) || (num(a.score) != null && num(b.score) != null && Math.abs(a.score - b.score) < 1e-6));
-      return { detector: b.detector, layer: b.layer, before: b, after: a, same };
+      const sameStatus = !!a && a.status === b.status;
+      const delta = a && num(a.score) != null && num(b.score) != null ? a.score - b.score : null;
+      const same = sameStatus && (delta == null || Math.abs(delta) < 1e-9);
+      return { detector: b.detector, layer: b.layer, before: b, after: a, same, sameStatus, delta };
     });
   }
 

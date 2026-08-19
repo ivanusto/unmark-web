@@ -4,14 +4,19 @@ talks same-origin and no CORS changes are needed.
 
     /api/*  -> a running watermarks-remover server.py
     /llm/*  -> an OpenAI-compatible chat endpoint, for the optional AI rewrite
+    /stat/* -> the optional statistical-watermark sidecar (sidecar/unmark_stat.py)
 
     python3 serve_local.py                       # UI on http://127.0.0.1:8766, proxies to http://127.0.0.1:8765
     python3 serve_local.py --upstream http://127.0.0.1:8765 --api-key "$KEY"
     python3 serve_local.py --llm-upstream http://<your-llm-host>:<port> --llm-model <model>
+    python3 serve_local.py --stat-upstream http://127.0.0.1:8767   # KGW / SynthID-Text sidecar
 
 The rewrite proxy is off unless --llm-upstream (or UNMARK_LLM_URL) is set; with
 it unset, /llm/* answers 404 and the UI hides the rewrite panel entirely. The
-LLM key never reaches the browser: it is injected here, server-side.
+LLM key never reaches the browser: it is injected here, server-side. The same
+goes for /stat/* and --stat-upstream (UNMARK_STAT_URL): off by default, key
+(--stat-api-key / UNMARK_STAT_API_KEY) stays server-side, /stat-config only says
+whether it is enabled.
 
 Stdlib only. Binds 127.0.0.1 only. Static files are served from this directory
 with an allow-list (index.html, favicon.svg, css/, js/) — no directory listing,
@@ -45,8 +50,12 @@ API_KEY = ""
 LLM_UPSTREAM = ""
 LLM_API_KEY = ""
 LLM_MODEL = ""
+# Statistical-watermark sidecar (sidecar/unmark_stat.py). Same rules as /llm.
+STAT_UPSTREAM = ""
+STAT_API_KEY = ""
 FILE_TIMEOUT = 600  # file cleaning can be slow on big inputs
 LLM_TIMEOUT = 300
+STAT_TIMEOUT = 300  # first call loads an 8 GB model; generation of 1k tokens takes a while
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -83,6 +92,8 @@ class Handler(BaseHTTPRequestHandler):
             return ("/api", UPSTREAM, API_KEY, FILE_TIMEOUT)
         if path.startswith("/llm/"):
             return ("/llm", LLM_UPSTREAM, LLM_API_KEY, LLM_TIMEOUT)
+        if path.startswith("/stat/"):
+            return ("/stat", STAT_UPSTREAM, STAT_API_KEY, STAT_TIMEOUT)
         return None
 
     def _proxy(self, path: str, prefix: str, upstream: str, api_key: str, timeout: int) -> None:
@@ -98,9 +109,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             body = self.rfile.read(int(raw))
         headers = {"Content-Type": self.headers.get("Content-Type", "application/json")}
-        # /api lets the page supply its own bearer token; /llm never does — its
-        # key is configured here so it stays out of the browser entirely.
-        if prefix == "/llm":
+        # /api lets the page supply its own bearer token; /llm and /stat never
+        # do — their keys are configured here so they stay out of the browser
+        # entirely, and the watermarks service's token is never sent to them.
+        if prefix in ("/llm", "/stat"):
             auth = f"Bearer {api_key}" if api_key else ""
         else:
             auth = self.headers.get("Authorization") or (f"Bearer {api_key}" if api_key else "")
@@ -124,10 +136,18 @@ class Handler(BaseHTTPRequestHandler):
         payload = {"ok": True, "enabled": bool(LLM_UPSTREAM), "model": LLM_MODEL}
         self._send(HTTPStatus.OK, json.dumps(payload).encode(), "application/json")
 
+    def _stat_config(self) -> None:
+        """Whether the statistical-watermark sidecar is proxied. No URL, no key."""
+        payload = {"ok": True, "enabled": bool(STAT_UPSTREAM)}
+        self._send(HTTPStatus.OK, json.dumps(payload).encode(), "application/json")
+
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
         if path == "/llm-config":
             self._llm_config()
+            return
+        if path == "/stat-config":
+            self._stat_config()
             return
         route = self._route(path)
         if route:
@@ -147,7 +167,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    global UPSTREAM, API_KEY, LLM_UPSTREAM, LLM_API_KEY, LLM_MODEL
+    global UPSTREAM, API_KEY, LLM_UPSTREAM, LLM_API_KEY, LLM_MODEL, STAT_UPSTREAM, STAT_API_KEY
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", type=int, default=int(os.environ.get("WMWEB_PORT", "8766")))
     p.add_argument("--upstream", default=os.environ.get("WATERMARKS_SERVICE_URL", UPSTREAM))
@@ -156,12 +176,17 @@ def main() -> int:
                    help="OpenAI-compatible base URL for the optional AI rewrite, without the /v1 suffix")
     p.add_argument("--llm-api-key", default=os.environ.get("UNMARK_LLM_API_KEY", ""))
     p.add_argument("--llm-model", default=os.environ.get("UNMARK_LLM_MODEL", ""))
+    p.add_argument("--stat-upstream", default=os.environ.get("UNMARK_STAT_URL", ""),
+                   help="base URL of sidecar/unmark_stat.py, e.g. http://127.0.0.1:8767 (KGW / SynthID-Text)")
+    p.add_argument("--stat-api-key", default=os.environ.get("UNMARK_STAT_API_KEY", ""))
     a = p.parse_args()
     UPSTREAM, API_KEY = a.upstream.rstrip("/"), a.api_key
     LLM_UPSTREAM, LLM_API_KEY, LLM_MODEL = a.llm_upstream.rstrip("/"), a.llm_api_key, a.llm_model
+    STAT_UPSTREAM, STAT_API_KEY = a.stat_upstream.rstrip("/"), a.stat_api_key
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     print(f"web UI: http://127.0.0.1:{a.port}/  (proxying /api -> {UPSTREAM})", file=sys.stderr)
     print(f"AI rewrite: {'/llm -> ' + LLM_UPSTREAM if LLM_UPSTREAM else 'disabled (--llm-upstream unset)'}", file=sys.stderr)
+    print(f"stat watermarks: {'/stat -> ' + STAT_UPSTREAM if STAT_UPSTREAM else 'disabled (--stat-upstream unset)'}", file=sys.stderr)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

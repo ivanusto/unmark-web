@@ -112,6 +112,8 @@ sidecar/.venv/bin/python sidecar/unmark_stat.py            # 127.0.0.1:8767
 python3 serve_local.py --stat-upstream http://127.0.0.1:8767
 ```
 
+<img alt="檢測器分頁在「以 Layer A 清理並重新檢測」一段 SynthID 浮水印樣本之後：字元層從 40 個零寬空格變為乾淨，Kirchenbauer 維持乾淨、SynthID-Text 維持偵測到且判定相同；總結寫著 Layer A 清理沒有改變任何統計型判定。" src="docs/screenshot-inspector.png">
+
 接著在檢測器分頁：用 SynthID-Text、key **A** 生成 → 以 key A 檢測（偵測到）→ 切到 key **B**（乾淨／不確定）→「以 Layer A 清理並重新檢測」（分數不變）。兩個世界：字元層歸零，統計層紋風不動。
 
 限制直說：偵測只對**同一方案、同一把 key、同一個 tokenizer** 有效；你手上沒有 key 的模型產生的文字無法判定，sidecar 回的是「對這把 key 而言乾淨」，而不是「沒有浮水印」。它跟改寫面板一樣是 `serve_local.py` 的功能——線上頁面連不到純 HTTP 的 loopback 服務。

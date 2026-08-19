@@ -128,6 +128,9 @@
     capabilities: () => request("GET", "/capabilities", null, { timeoutMs: 5000 }),
     inspect: (u8, name) => request("POST", "/inspect", { file: bytesToBase64(u8), name }),
     clean: (u8, name, options) => request("POST", "/clean", { file: bytesToBase64(u8), name, options: options || {} }),
+    // Upstream's statistical text detectors (MarkLLM harness, vendor seams); the
+    // Inspector only calls this when /capabilities advertises text_detectors.
+    detect: (u8, name) => request("POST", "/detect", { file: bytesToBase64(u8), name }, { timeoutMs: 300000 }),
 
     /* Optional AI rewrite. Only serve_local.py answers these: /llm-config says
      * whether an endpoint is configured, /llm proxies to it. Both are
@@ -140,6 +143,24 @@
       stream: false,
       temperature: 0.3,
     }, { base: "/llm", auth: false, timeoutMs: 300000, signal }),
+
+    /* Optional statistical-watermark sidecar (sidecar/unmark_stat.py): real
+     * KGW / SynthID-Text detection and demo generation. Again serve_local.py
+     * only: /stat-config says whether it is proxied, /stat forwards to it,
+     * same-origin, and the watermarks service's key is never attached. */
+    statConfig: () => request("GET", "/stat-config", null, { base: "", auth: false, timeoutMs: 3000 }),
+    statHealth: () => request("GET", "/health", null, { base: "/stat", auth: false, timeoutMs: 10000 }),
+    statDetect: (text, opts, signal) => request("POST", "/detect", {
+      text,
+      detectors: (opts && opts.detectors) || undefined,
+      key_profile: (opts && opts.keyProfile) || "a",
+    }, { base: "/stat", auth: false, timeoutMs: 300000, signal }),
+    statGenerate: (opts, signal) => request("POST", "/generate", {
+      prompt: opts.prompt,
+      scheme: opts.scheme || "none",
+      key_profile: opts.keyProfile || "a",
+      max_new_tokens: opts.maxNewTokens || 400,
+    }, { base: "/stat", auth: false, timeoutMs: 300000, signal }),
   };
   root.WmApi = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;

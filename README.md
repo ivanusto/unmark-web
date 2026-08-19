@@ -112,6 +112,8 @@ sidecar/.venv/bin/python sidecar/unmark_stat.py            # 127.0.0.1:8767
 python3 serve_local.py --stat-upstream http://127.0.0.1:8767
 ```
 
+<img alt="The Inspector tab after "Clean (Layer A) & re-inspect" on a SynthID-watermarked sample: the character layer goes from 40 zero-width spaces to clean, while Kirchenbauer stays clean and SynthID-Text stays detected with the same verdict; the Overall box says Layer A cleaning left every statistical verdict unchanged." src="docs/screenshot-inspector.png">
+
 Then, in the Inspector: *Generate* with SynthID-Text and key **A** → *Inspect* with key A (detected) → switch to key **B** (clean / uncertain) → *Clean (Layer A) & re-inspect* (scores unchanged). Two worlds: the character layer goes to zero, the statistical layer does not move.
 
 Limits, stated plainly: detection is only valid for the **same scheme, the same key and the same tokenizer** as generation; text from a model whose keys you do not hold cannot be judged, and the sidecar says *clean for this key*, never *not watermarked*. Like the rewrite panel, it is a `serve_local.py` feature — the hosted page cannot reach a plain-HTTP loopback service.
