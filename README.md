@@ -12,6 +12,11 @@ Independent, browser-first web client for **[guillaumemeyer/watermarks-remover](
 
 Live demo: [https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/unmark-web/) · Local: open `index.html` or run `python3 serve_local.py`.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+  <img alt="The Text tab running in the browser: pasted prose on the left, the cleaned copy on the right, a Findings row listing the removed zero-width, no-break and soft-hyphen characters and the normalised ideographic space, and below them the optional AI rewrite panel showing its rewritten output." src="docs/screenshot-light.png">
+</picture>
+
 ## What it does (and does not)
 
 | Input | Browser engine | Server engine (`server.py`) |
