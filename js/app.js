@@ -229,6 +229,263 @@
     } catch (_) { /* no model listing — the free-text field still works */ }
   }
 
+  // ---------------------------------------------------------------- Watermark Inspector
+  /* Detectors only. The Inspector never rewrites the input by itself; "Clean &
+   * re-inspect" runs Layer A once and shows every detector before/after so the
+   * user can see which layer the cleaner actually touched. Statistical rows need
+   * the local sidecar (serve_local.py --stat-upstream …) and report
+   * "unavailable" everywhere else, hosted page included. */
+  const INSPECT_KEY = "unmark-web.inspect";
+  const insp = {
+    input: null,            // {kind:"text",text} | {kind:"file",name,u8}
+    results: null,          // last run
+    compare: null,          // [{detector, before, after, same}] after "Clean & re-inspect"
+    cleanedText: null,
+    busy: false, ctrl: null,
+    stat: { enabled: false, detectors: [], generate: false, keyProfile: "a", model: "" },
+    demoCtrl: null,
+  };
+  const inspText = $("inspect-text");
+
+  function inspectInput() {
+    if (insp.input && insp.input.kind === "file") return insp.input;
+    return { kind: "text", text: inspText.value };
+  }
+  function inspectCtx(signal) {
+    const o = textOptions();
+    return {
+      layerAOptions: { aggressive: o.aggressiveHomoglyphs, stripEmojiGlue: o.stripEmojiGlue },
+      stat: Object.assign({}, insp.stat, { keyProfile: $("inspect-key").value || "a" }),
+      server, signal,
+    };
+  }
+  function setInspectBusy(on) {
+    insp.busy = on;
+    $("btn-inspect-run").disabled = on; $("btn-inspect-clean").disabled = on; $("btn-inspect-json").disabled = on;
+    $("btn-inspect-cancel").hidden = !on;
+  }
+  function statusBadge(status) {
+    const b = el("span", "tag-badge status-" + status, t("status." + status));
+    return b;
+  }
+  function flagBadges(r) {
+    const wrap = el("span", "inspect-flags");
+    if (r.heuristic) wrap.appendChild(el("span", "flag flag-heuristic", t("inspect.flagHeuristic")));
+    if (r.requires_key) wrap.appendChild(el("span", "flag", t("inspect.flagKey")));
+    if (r.requires_model) wrap.appendChild(el("span", "flag", t("inspect.flagModel")));
+    wrap.appendChild(el("span", "flag", t(r.local ? "inspect.flagLocal" : "inspect.flagRemote")));
+    return wrap;
+  }
+  function fmtScore(r) {
+    if (!r) return "—";
+    const parts = [];
+    if (typeof r.score === "number") parts.push((Number.isInteger(r.score) ? String(r.score) : r.score.toFixed(3)) + (typeof r.threshold === "number" ? ` / ${r.threshold.toFixed(3)}` : ""));
+    if (typeof r.confidence === "number" && !Number.isInteger(r.score)) parts.push(`p=${r.confidence.toFixed(3)}`);
+    return parts.length ? parts.join(" · ") : "—";
+  }
+  function noteText(r) {
+    if (!r) return "";
+    if (r.noteKey) return t(r.noteKey, r.noteParams || undefined);
+    return r.note || "";
+  }
+  function evidenceCell(r) {
+    const td = el("td", "inspect-evidence");
+    if (!r || !r.evidence || !r.evidence.length) { const n = noteText(r); if (n) td.appendChild(el("div", "inspect-note", n)); return td; }
+    const d = el("details");
+    d.appendChild(el("summary", null, t("inspect.evidenceN", { n: r.evidence.length })));
+    const ul = el("ul");
+    for (const e of r.evidence.slice(0, 60)) {
+      const li = el("li");
+      li.appendChild(el("code", null, e.label)); li.appendChild(document.createTextNode(" " + e.detail));
+      if (e.offsets && e.offsets.length) li.appendChild(el("span", "inspect-offsets", " @" + e.offsets.slice(0, 8).join(",")));
+      ul.appendChild(li);
+    }
+    if (r.evidence.length > 60) ul.appendChild(el("li", "inspect-note", "…"));
+    d.appendChild(ul); td.appendChild(d);
+    const n = noteText(r); if (n) td.appendChild(el("div", "inspect-note", n));
+    return td;
+  }
+
+  function renderInspect() {
+    $("inspect-count").textContent = t("chars", { n: inspText.value.length });   // re-localised on language change too
+    const box = $("inspect-results"); box.replaceChildren();
+    const results = insp.results;
+    if (!results) { $("inspect-overall").classList.remove("show"); return; }
+    const cmp = insp.compare ? Object.fromEntries(insp.compare.map((c) => [c.detector, c])) : null;
+    for (const layer of Detectors.LAYERS) {
+      const rows = results.filter((r) => r.layer === layer && r.status !== "not_applicable");
+      if (!rows.length) continue;   // a whole layer that does not apply (image rows on text) is not worth a table
+      const sec = el("section", "inspect-layer");
+      sec.appendChild(el("h3", null, t("inspect.layer." + layer)));
+      const table = el("table", "inspect-table");
+      const thead = el("thead"); const hr = el("tr");
+      const heads = cmp ? ["detector", "before", "after", "delta", "evidence"] : ["detector", "status", "score", "evidence"];
+      for (const h of heads) hr.appendChild(el("th", null, t("inspect.col." + h)));
+      thead.appendChild(hr); table.appendChild(thead);
+      const tbody = el("tbody");
+      for (const r of rows) {
+        const tr = el("tr", "row-" + r.status);
+        const name = el("td", "inspect-name"); name.appendChild(el("div", null, t("det." + r.detector))); name.appendChild(flagBadges(r)); tr.appendChild(name);
+        if (cmp) {
+          const c = cmp[r.detector]; const a = c && c.after;
+          const tdB = el("td"); tdB.appendChild(statusBadge(r.status)); tdB.appendChild(el("div", "inspect-score", fmtScore(r))); tr.appendChild(tdB);
+          const tdA = el("td"); if (a) { tdA.appendChild(statusBadge(a.status)); tdA.appendChild(el("div", "inspect-score", fmtScore(a))); } else tdA.textContent = "—"; tr.appendChild(tdA);
+          const same = c ? c.same : false;
+          tr.appendChild(el("td", "inspect-delta " + (same ? "same" : "changed"), t(same ? "inspect.unchanged" : "inspect.changed")));
+          tr.appendChild(evidenceCell(r));   // what was found *before* cleaning is the evidence worth reading
+        } else {
+          const tdS = el("td"); tdS.appendChild(statusBadge(r.status)); tr.appendChild(tdS);
+          tr.appendChild(el("td", "inspect-score", fmtScore(r)));
+          tr.appendChild(evidenceCell(r));
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      const wrap = el("div", "inspect-table-wrap"); wrap.appendChild(table); sec.appendChild(wrap);
+      box.appendChild(sec);
+    }
+    renderOverall();
+  }
+
+  function renderOverall() {
+    const lines = $("inspect-overall-lines"); lines.replaceChildren();
+    const res = insp.results;
+    if (!res) { $("inspect-overall").classList.remove("show"); return; }
+    const s = Detectors.summarize(res);   // the state of the input as given; the cleaning lines follow
+    const add = (k, p) => lines.appendChild(el("p", null, t(k, p)));
+    if (s.character !== "not_applicable") add("overall.character." + s.character);
+    if (s.metadata !== "not_applicable") add("overall.metadata." + s.metadata);
+    if (s.statistical !== "not_applicable") add("overall.statistical." + s.statistical);
+    if (s.heuristic && s.heuristic !== "not_applicable") add("overall.heuristic." + s.heuristic);
+    if (insp.compare) {
+      const stat = insp.compare.filter((c) => c.layer === "statistical" && c.before && !c.before.heuristic && ["detected", "uncertain", "clean"].includes(c.before.status));
+      if (stat.length && stat.every((c) => c.same)) add("overall.cleanNoEffect");
+      else if (stat.length) add("overall.cleanChanged");
+      const ch = insp.compare.filter((c) => c.layer === "character");
+      if (ch.length) add(ch.every((c) => c.after && c.after.status === "clean") ? "overall.characterCleaned" : "overall.characterResidual");
+    }
+    $("inspect-overall").classList.add("show");
+  }
+
+  async function runInspect(mode) {
+    if (insp.busy) return;
+    const input = inspectInput();
+    if (input.kind === "text" && !input.text.trim()) { toast(t("inspectEmpty"), "⚠️"); return; }
+    insp.ctrl = new AbortController();
+    setInspectBusy(true);
+    $("inspect-status").textContent = t("inspectRunning");
+    insp.compare = null; insp.cleanedText = null;
+    try {
+      const ctx = inspectCtx(insp.ctrl.signal);
+      const paint = () => { renderInspect(); };
+      insp.results = [];
+      const before = await Detectors.runAll(input, ctx, (r) => { insp.results.push(r); paint(); });
+      insp.results = before;
+      if (mode === "clean") {
+        if (input.kind !== "text") { toast(t("inspectCleanTextOnly"), "⚠️"); }
+        else {
+          const { cleaned } = LayerA.clean(input.text, textOptions());
+          insp.cleanedText = cleaned;
+          $("inspect-status").textContent = t("inspectReRunning");
+          const after = await Detectors.runAll({ kind: "text", text: cleaned }, ctx);
+          insp.compare = Detectors.compare(before, after);
+        }
+      }
+      renderInspect();
+      $("inspect-status").textContent = "";
+    } catch (e) {
+      const reason = String((e && e.message) || e);
+      $("inspect-status").textContent = reason === "cancelled" ? t("rewriteCancelled") : t("inspectFailed", { msg: reason });
+    } finally {
+      setInspectBusy(false); insp.ctrl = null;
+    }
+  }
+
+  function inspectReport() {
+    const res = insp.results || [];
+    const strip = (r) => Object.assign({}, r, { note: noteText(r) || null, noteKey: undefined, noteParams: undefined });
+    const input = inspectInput();
+    const rep = {
+      schema: "unmark-inspector/1", generated_at: new Date().toISOString(), page: location.origin + location.pathname,
+      input: input.kind === "text" ? { kind: "text", length: input.text.length } : { kind: "file", name: input.name, bytes: input.u8.length },
+      key_profile: $("inspect-key").value || "a",
+      sidecar: insp.stat.enabled ? { enabled: true, model: insp.stat.model, detectors: insp.stat.detectors } : { enabled: false },
+      results: res.map(strip), summary: Detectors.summarize(res),
+    };
+    if (insp.compare) rep.after_layer_a = { results: insp.compare.map((c) => c.after && strip(c.after)), unchanged: insp.compare.map((c) => ({ detector: c.detector, same: c.same })), summary: Detectors.summarize(insp.compare.map((c) => c.after || c.before)) };
+    return rep;
+  }
+
+  function setInspectFile(file) {
+    if (!file) { insp.input = null; $("inspect-file-name").textContent = ""; inspText.disabled = false; return; }
+    file.arrayBuffer().then((buf) => {
+      insp.input = { kind: "file", name: file.name, u8: new Uint8Array(buf) };
+      $("inspect-file-name").textContent = t("inspectFileLoaded", { name: file.name, size: fmtBytes(file.size) });
+      inspText.disabled = true;
+      insp.results = null; insp.compare = null; renderInspect();
+    });
+  }
+
+  async function runStatDemo() {
+    if (insp.demoCtrl) return;
+    const prompt = $("stat-demo-prompt").value.trim() || $("stat-demo-prompt").placeholder;
+    insp.demoCtrl = new AbortController();
+    $("btn-stat-demo").disabled = true; $("btn-stat-demo-cancel").hidden = false;
+    $("stat-demo-status").textContent = t("statDemoBusy");
+    try {
+      const res = await WmApi.statGenerate({ prompt, scheme: $("stat-demo-scheme").value, keyProfile: $("stat-demo-key").value, maxNewTokens: Math.max(50, Math.min(1024, parseInt($("stat-demo-tokens").value, 10) || 400)) }, insp.demoCtrl.signal);
+      const text = res && typeof res.text === "string" ? res.text : "";
+      if (!text) throw new Error("empty response from the sidecar");
+      setInspectFile(null); inspText.value = text; $("inspect-count").textContent = t("chars", { n: text.length });
+      $("inspect-key").value = $("stat-demo-key").value;
+      $("stat-demo-status").textContent = t("statDemoDone", { n: res.tokens || "?", scheme: res.scheme, key: String(res.key_profile || "").toUpperCase() });
+      insp.results = null; insp.compare = null; renderInspect();
+    } catch (e) {
+      const reason = String((e && e.message) || e);
+      $("stat-demo-status").textContent = reason === "cancelled" ? t("rewriteCancelled") : t("inspectFailed", { msg: reason });
+    } finally {
+      insp.demoCtrl = null; $("btn-stat-demo").disabled = false; $("btn-stat-demo-cancel").hidden = true;
+    }
+  }
+
+  async function initInspect() {
+    inspText.addEventListener("input", () => { $("inspect-count").textContent = t("chars", { n: inspText.value.length }); });
+    $("btn-inspect-from-text").addEventListener("click", () => { setInspectFile(null); inspText.value = inputEl.value; inspText.dispatchEvent(new Event("input")); });
+    $("btn-inspect-file").addEventListener("click", () => $("inspect-file-input").click());
+    $("inspect-file-input").addEventListener("change", () => { const f = $("inspect-file-input").files[0]; if (f) setInspectFile(f); $("inspect-file-input").value = ""; });
+    inspText.addEventListener("focus", () => { if (insp.input && insp.input.kind === "file") setInspectFile(null); });
+    $("btn-inspect-run").addEventListener("click", () => runInspect("inspect"));
+    $("btn-inspect-clean").addEventListener("click", () => runInspect("clean"));
+    $("btn-inspect-cancel").addEventListener("click", () => { if (insp.ctrl) insp.ctrl.abort(); });
+    $("btn-inspect-json").addEventListener("click", async () => {
+      if (!insp.results) { toast(t("inspectEmptyReport"), "⚠️"); return; }
+      try { await navigator.clipboard.writeText(JSON.stringify(inspectReport(), null, 2)); toast(t("copied")); }
+      catch (_) { toast(t("copyFailed"), "⚠️"); }
+    });
+    try { const saved = JSON.parse(localStorage.getItem(INSPECT_KEY) || "{}"); if (saved.key === "a" || saved.key === "b") $("inspect-key").value = saved.key; } catch (_) { /* ignore */ }
+    $("inspect-key").addEventListener("change", () => { try { localStorage.setItem(INSPECT_KEY, JSON.stringify({ key: $("inspect-key").value })); } catch (_) {} });
+    $("btn-stat-demo").addEventListener("click", runStatDemo);
+    $("btn-stat-demo-cancel").addEventListener("click", () => { if (insp.demoCtrl) insp.demoCtrl.abort(); });
+
+    // Sidecar discovery: same-origin probe, hidden unless serve_local.py has a
+    // configured --stat-upstream and the sidecar answers /health.
+    let cfg = null;
+    try { cfg = await WmApi.statConfig(); } catch (_) { /* hosted page or no proxy */ }
+    if (cfg && cfg.enabled) {
+      try {
+        const h = await WmApi.statHealth();
+        const dets = Array.isArray(h && h.detectors) ? h.detectors.filter((d) => d && d.available !== false).map((d) => d.id) : [];
+        insp.stat = Object.assign(insp.stat, { enabled: true, detectors: dets, generate: h && h.generate !== false, model: (h && h.model) || "" });
+      } catch (e) {
+        insp.stat.enabled = false;
+        $("stat-hint").textContent = t("statSidecarDown", { msg: String((e && e.message) || e) });
+      }
+    }
+    $("inspect-key-wrap").hidden = !insp.stat.enabled;
+    $("stat-demo-box").hidden = !(insp.stat.enabled && insp.stat.generate);
+    $("stat-hint").hidden = insp.stat.enabled;
+  }
+
   // ---------------------------------------------------------------- tabs (WAI-ARIA)
   const tabs = [...document.querySelectorAll('[role="tab"]')];
   function selectTab(btn) {
@@ -381,9 +638,9 @@
       I18n.setLang(sel.value);
       sel.value = I18n.lang;                            // setLang normalises unknown codes
       I18n.save();
-      runText(); renderEngineState(); applyRewritePromptDefault();
+      runText(); renderEngineState(); applyRewritePromptDefault(); renderInspect();
     });
   }
 
-  initTheme(); initLang(); initSettings(); runText(); renderEngineState(); initRewrite();
+  initTheme(); initLang(); initSettings(); runText(); renderEngineState(); initRewrite(); initInspect();
 })();

@@ -77,6 +77,9 @@
         <button class="tab-btn" role="tab" id="tab-btn-file" aria-selected="false" aria-controls="tab-file" data-tab="tab-file" tabindex="-1" type="button">
           <span aria-hidden="true">📁</span><span data-i18n="tabFile">Files &amp; images (metadata / C2PA)</span>
         </button>
+        <button class="tab-btn" role="tab" id="tab-btn-inspect" aria-selected="false" aria-controls="tab-inspect" data-tab="tab-inspect" tabindex="-1" type="button">
+          <span aria-hidden="true">🔬</span><span data-i18n="tabInspect">Inspector</span>
+        </button>
       </div>
 
       <div class="tab-pane active" id="tab-text" role="tabpanel" aria-labelledby="tab-btn-text">
@@ -162,6 +165,70 @@
           <div id="file-results-container" aria-live="polite"></div>
         </div>
       </div>
+
+      <!-- Watermark Inspector: detectors only, never cleans by itself. The
+           statistical rows need the local sidecar (see sidecar/README.md);
+           on the hosted page they report "unavailable" by design. -->
+      <div class="tab-pane" id="tab-inspect" role="tabpanel" aria-labelledby="tab-btn-inspect" hidden>
+        <div class="main-card">
+          <p class="inspect-intro" data-i18n="inspectIntro">Runs every detector on the same input and reports each one separately — character-level marks, file metadata and statistical (token-sampling) watermarks are different worlds, and cleaning one says nothing about the others.</p>
+          <div class="text-box-container inspect-input">
+            <div class="box-header">
+              <label for="inspect-text" data-i18n="inspectInputLabel">Text to inspect</label>
+              <span id="inspect-count" aria-live="polite">0</span>
+            </div>
+            <div class="textarea-wrapper">
+              <textarea id="inspect-text" data-i18n-placeholder="inspectPlaceholder" placeholder="Paste text here, or load it from the Text tab…" spellcheck="false"></textarea>
+            </div>
+          </div>
+          <div class="options-bar mt-14">
+            <div class="options-group">
+              <button class="btn btn-secondary btn-sm" id="btn-inspect-from-text" type="button" data-i18n="inspectFromText">Use text from the Text tab</button>
+              <button class="btn btn-secondary btn-sm" id="btn-inspect-file" type="button" data-i18n="inspectPickFile">Inspect an image file…</button>
+              <input type="file" id="inspect-file-input" class="sr-only" accept=".png,.jpg,.jpeg,.webp,.avif,.heic,.heif,.bmp,.gif,.tif,.tiff" />
+              <span id="inspect-file-name" class="mode-note"></span>
+            </div>
+            <label class="checkbox-label inspect-key" id="inspect-key-wrap" hidden data-i18n-title="inspectKeyTitle">
+              <span data-i18n="inspectKeyProfile">Detection key</span>
+              <select id="inspect-key"><option value="a">A</option><option value="b">B</option></select>
+            </label>
+          </div>
+          <div class="actions-bar mt-14">
+            <button class="btn btn-primary" id="btn-inspect-run" type="button"><span aria-hidden="true">🔬</span><span data-i18n="btnInspect">Inspect</span></button>
+            <button class="btn btn-secondary" id="btn-inspect-clean" type="button"><span aria-hidden="true">🧹</span><span data-i18n="btnInspectClean">Clean (Layer A) &amp; re-inspect</span></button>
+            <button class="btn btn-secondary" id="btn-inspect-cancel" type="button" hidden data-i18n="btnRewriteCancel">Cancel</button>
+            <button class="btn btn-secondary" id="btn-inspect-json" type="button"><span aria-hidden="true">📋</span><span data-i18n="btnInspectJson">Copy JSON report</span></button>
+            <span id="inspect-status" class="mode-note" aria-live="polite"></span>
+          </div>
+          <div id="inspect-results" class="inspect-results" aria-live="polite"></div>
+          <div class="report-box" id="inspect-overall">
+            <div class="report-title"><span aria-hidden="true">🧾</span><span data-i18n="inspectOverall">Overall</span></div>
+            <div id="inspect-overall-lines" class="inspect-overall-lines"></div>
+          </div>
+
+          <!-- Demo generator: only when the local statistical sidecar is up. -->
+          <div class="report-box rewrite-box" id="stat-demo-box" hidden>
+            <div class="report-title"><span aria-hidden="true">🧪</span><span data-i18n="statDemoTitle">Generate a watermarked sample (local sidecar)</span></div>
+            <p class="footnote" data-i18n="statDemoNote">Generates text with a known key so you can watch the statistical detectors agree with the right key, disagree with the wrong one, and ignore Layer A cleaning entirely. Runs on your own machine.</p>
+            <div class="rewrite-controls mt-14">
+              <label for="stat-demo-prompt" data-i18n="statDemoPrompt">Prompt</label>
+              <input id="stat-demo-prompt" type="text" spellcheck="false" autocomplete="off" data-i18n-placeholder="statDemoPromptPlaceholder" placeholder="Write a 400-word essay on the history of coffee." />
+            </div>
+            <div class="rewrite-controls mt-14">
+              <label for="stat-demo-scheme" data-i18n="statDemoScheme">Scheme</label>
+              <select id="stat-demo-scheme"><option value="synthid">SynthID-Text</option><option value="kgw">Kirchenbauer (KGW)</option><option value="none" data-i18n="statDemoNone">No watermark</option></select>
+              <label for="stat-demo-key" data-i18n="statDemoKey">Key</label>
+              <select id="stat-demo-key"><option value="a">A</option><option value="b">B</option></select>
+              <label for="stat-demo-tokens" data-i18n="statDemoTokens">Max tokens</label>
+              <input id="stat-demo-tokens" type="number" min="50" max="1024" value="400" />
+              <button class="btn btn-primary" id="btn-stat-demo" type="button" data-i18n="btnStatDemo">Generate</button>
+              <button class="btn btn-secondary" id="btn-stat-demo-cancel" type="button" hidden data-i18n="btnRewriteCancel">Cancel</button>
+            </div>
+            <p class="footnote" id="stat-demo-status" aria-live="polite"></p>
+          </div>
+          <p class="footnote rewrite-hint" id="stat-hint" data-i18n="statDisabledHint"></p>
+        </div>
+      </div>
     </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite"><span id="toast-icon" aria-hidden="true">✅</span><span id="toast-msg"></span></div>
@@ -175,6 +242,8 @@
   <script src="js/layer_a.js"></script>
   <script src="js/image_meta.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/stylometry.js"></script>
+  <script src="js/detectors.js"></script>
   <script src="js/i18n.js"></script>
   <script src="js/app.js"></script>
 </body>

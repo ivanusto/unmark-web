@@ -689,3 +689,58 @@ footer a:hover {
 .engine-select { margin-top: 12px; }
 .footnote { margin-top: 8px; font-size: 11.5px; }
 
+
+/* ---- Watermark Inspector ---- */
+.inspect-intro { font-size: 13px; color: var(--text-secondary); line-height: 1.55; margin-bottom: 14px; }
+.inspect-input { min-height: 0; }
+.inspect-input .textarea-wrapper { min-height: 0; }
+.inspect-input textarea { min-height: 160px; height: auto; }
+.inspect-key[hidden] { display: none; }
+.inspect-key select, .rewrite-controls select, .rewrite-controls input[type="number"] {
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.rewrite-controls input[type="number"] { flex: 0 0 90px; min-width: 70px; }
+.rewrite-controls input[type="text"] { flex: 1 1 260px; }
+.inspect-results { margin-top: 18px; }
+.inspect-layer + .inspect-layer { margin-top: 18px; }
+.inspect-layer h3 { font-size: 13px; font-weight: 700; margin-bottom: 8px; color: var(--text-primary); }
+.inspect-table-wrap { overflow-x: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-secondary); }
+.inspect-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.inspect-table th, .inspect-table td { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border-color); }
+.inspect-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+.inspect-table tbody tr:last-child td { border-bottom: 0; }
+.inspect-table tr.row-detected td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
+.inspect-table tr.row-uncertain td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
+.inspect-table tr.row-clean td:first-child { box-shadow: inset 3px 0 0 var(--success); }
+.inspect-name { min-width: 180px; font-weight: 600; }
+.inspect-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.flag { font-size: 10px; font-weight: 500; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border-color); color: var(--text-muted); font-family: var(--font-mono); }
+.flag-heuristic { color: var(--warning); border-color: rgba(245, 158, 11, 0.4); }
+.inspect-score { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); white-space: nowrap; margin-top: 4px; }
+td.inspect-score { margin-top: 0; }
+.tag-badge.status-clean { background: var(--success-bg); color: var(--success); border-color: rgba(16, 185, 129, 0.25); }
+.tag-badge.status-detected { background: var(--danger-bg); color: var(--danger); border-color: rgba(239, 68, 68, 0.3); }
+.tag-badge.status-uncertain { background: var(--warning-bg); color: var(--warning); border-color: rgba(245, 158, 11, 0.3); }
+.tag-badge.status-unavailable, .tag-badge.status-not_tested, .tag-badge.status-not_applicable {
+  background: transparent; color: var(--text-muted); border-color: var(--border-color);
+}
+.tag-badge.status-error { background: var(--danger-bg); color: var(--danger); border-style: dashed; }
+.inspect-evidence { color: var(--text-secondary); max-width: 520px; }
+.inspect-evidence details summary { cursor: pointer; font-size: 12px; color: var(--accent); }
+.inspect-evidence ul { margin: 6px 0 0 16px; padding: 0; font-size: 12px; line-height: 1.5; }
+.inspect-evidence code { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-primary); }
+.inspect-offsets { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+.inspect-note { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.45; }
+.inspect-delta { font-weight: 600; white-space: nowrap; }
+.inspect-delta.same { color: var(--text-muted); }
+.inspect-delta.changed { color: var(--warning); }
+.inspect-overall-lines p { font-size: 13px; line-height: 1.55; margin: 0; }
+.inspect-overall-lines p + p { margin-top: 4px; }
+#inspect-overall { margin-top: 16px; }
+#stat-demo-box { margin-top: 18px; }

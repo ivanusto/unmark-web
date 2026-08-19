@@ -8,7 +8,8 @@ Independent, browser-first web client for **[guillaumemeyer/watermarks-remover](
 
 - **Runs entirely in the browser** for text (Layer A: invisible Unicode / homoglyph spaces) and PNG / JPEG / WebP / AVIF / HEIC / BMP / GIF / TIFF metadata (C2PA, EXIF, XMP, text chunks). No uploads, no analytics, no web fonts, no third-party requests.
 - **Optionally drives the upstream Python service** (`server.py`) for everything else — PDF, DOCX, ODT, EPUB, full HTML/SVG/Markdown container cleaning, and pixel-domain backends.
-- The JavaScript engines are **line-for-line ports of upstream's `text_unicode.py` and `image_meta.py`**, and a parity test suite asserts identical output (same characters kept/stripped, same bytes out of the image parsers).
+- The JavaScript engines are **line-for-line ports of upstream's `text_unicode.py`, `image_meta.py` and `score_stylometry.py`**, and a parity test suite asserts identical output (same characters kept/stripped, same bytes out of the image parsers, same stylometry numbers).
+- A **Watermark Inspector** tab runs every detector on one input and reports each separately — character layer, metadata layer, statistical layer — and can re-run them after a Layer A clean to show what the cleaner did *not* touch. Statistical detectors (Kirchenbauer, SynthID-Text) run through an optional local sidecar.
 
 Live demo: [https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/unmark-web/) · Local: open `index.html` or run `python3 serve_local.py`.
 
@@ -26,7 +27,8 @@ Live demo: [https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/u
 | PNG / JPEG / WebP / AVIF / HEIC | drops `tEXt/zTXt/iTXt/eXIf/caBX/c2*` chunks, `APPn` (except JFIF) + `COM` segments, `EXIF/XMP/ICCP/C2PA` RIFF chunks with VP8X flag fix-up, and `jumb/c2pa/uuid` (XMP) ISOBMFF boxes plus their `meta` sub-boxes. Pixels are untouched (no canvas re-encode). "Keep non-AI metadata" mode only drops blocks with AI/C2PA hints. | same, plus optional pixel-domain backends if installed |
 | BMP / GIF / TIFF | BMP: drops the trailing bytes after the pixel payload (the only place BMP metadata can live) and rewrites the file-size field. GIF: drops comment and XMP/unknown application extensions, keeping NETSCAPE2.0 looping and ICC. TIFF (classic and BigTIFF): walks the IFD chains and drops XMP/EXIF/GPS/IPTC/Photoshop/MakerNote tags, patching each IFD in place so strip and tile offsets stay valid. | same |
 | PDF / DOCX / ODT / EPUB | — (needs server) | yes |
-| Statistical / pixel watermarks (SynthID, …) | **no** — out of scope for both; see upstream Layer B | via upstream backends only |
+| Statistical text watermarks (Kirchenbauer / KGW, SynthID-Text) | **detect only**, via the optional local [sidecar](sidecar/README.md) (needs a model and the generator's key); never removed — see upstream Layer B for rewriting | via upstream `/detect` (MarkLLM harness) when the server advertises text detectors |
+| Pixel watermarks (SynthID image, …) | **no** | via upstream backends only |
 
 ## Connecting a server
 
@@ -70,6 +72,50 @@ Three things worth being explicit about:
 - **Cleaning stays offline; rewriting does not.** Text you rewrite is sent to the endpoint you configured. Everything on the *Text* and *Files* tabs is still processed in the page unless you connect a server.
 
 
+## Watermark Inspector
+
+The *Inspector* tab is a detection lab, deliberately separated from the cleaners. It runs every registered detector on the same input and shows one row per detector, grouped by layer:
+
+| Layer | Detectors | Where it runs | What a hit means |
+| --- | --- | --- | --- |
+| **Character** | invisible / format Unicode, bidi controls, homoglyphs & exotic spaces | browser (`js/layer_a.js`) | deterministic — Layer A can strip it, and re-inspecting proves it |
+| **Metadata** | C2PA / Content Credentials, XMP, EXIF / TIFF tags, AI-generator markers, other | browser (`js/image_meta.js`) | provenance or generator metadata is present in the container |
+| **Statistical** | Kirchenbauer (KGW green-list), SynthID-Text, upstream `/detect`, TextSeal (placeholder), stylometry (heuristic) | local sidecar / upstream server / browser | the token sequence carries a sampling watermark **for the key you tested** — nothing more |
+
+Every detector returns the same shape, and *Copy JSON report* exports exactly that:
+
+```json
+{ "detector": "synthid-text", "layer": "statistical",
+  "status": "detected | clean | uncertain | unavailable | not_tested | not_applicable | error",
+  "confidence": 0.97, "score": 0.97, "threshold": 0.93,
+  "evidence": [{ "label": "posterior", "detail": "0.9712" }],
+  "note": null, "requires_key": true, "requires_model": true, "local": true, "heuristic": false,
+  "meta": { "model": "Qwen/Qwen3-4B-Instruct-2507", "key_profile": "a", "tokens": 412 } }
+```
+
+Three rules the UI enforces, because honesty is the feature:
+
+- **Detector and cleaner are separate.** *Clean (Layer A) & re-inspect* runs the cleaner once and shows every detector before / after with a *changed?* column. When the statistical rows come back identical, the Overall box says so: *Layer A cleaning did not affect the statistical watermark detectors.*
+- **A heuristic can never say "detected".** Stylometry (burstiness, MATTR, AI-phrase density — upstream's `score_stylometry.py`, ported) is capped at *uncertain* and labelled *heuristic* on the row.
+- **"Unavailable" is not "clean".** Statistical detectors need the generator's key, tokenizer and a model. On the hosted HTTPS page they report *unavailable* and the Overall line reads *Statistical watermarks were not tested here — they cannot be ruled out.* A *clean* from the sidecar is likewise scoped to the key and scheme you tested.
+
+### Statistical sidecar (optional, local only)
+
+[`sidecar/unmark_stat.py`](sidecar/README.md) is a small Python service (PyTorch + 🤗 Transformers, GPU recommended) that scores text with the reference Kirchenbauer and SynthID-Text detectors from `transformers`, using **public experiment keys** and the independently trained SynthID Bayesian detectors from [`xlr8harder/synthid`](https://github.com/xlr8harder/synthid) (MIT) for `Qwen/Qwen3-4B-Instruct-2507`. It can also *generate* a watermarked sample with a chosen key, so you can run the demonstration end to end:
+
+```bash
+# terminal 1: the sidecar (first run downloads the model and detector bundles)
+python -m venv sidecar/.venv && sidecar/.venv/bin/pip install -r sidecar/requirements.txt
+sidecar/.venv/bin/python sidecar/unmark_stat.py            # 127.0.0.1:8767
+
+# terminal 2: this UI, proxying /stat/* to it
+python3 serve_local.py --stat-upstream http://127.0.0.1:8767
+```
+
+Then, in the Inspector: *Generate* with SynthID-Text and key **A** → *Inspect* with key A (detected) → switch to key **B** (clean / uncertain) → *Clean (Layer A) & re-inspect* (scores unchanged). Two worlds: the character layer goes to zero, the statistical layer does not move.
+
+Limits, stated plainly: detection is only valid for the **same scheme, the same key and the same tokenizer** as generation; text from a model whose keys you do not hold cannot be judged, and the sidecar says *clean for this key*, never *not watermarked*. Like the rewrite panel, it is a `serve_local.py` feature — the hosted page cannot reach a plain-HTTP loopback service.
+
 ## Development
 
 ```bash
@@ -83,10 +129,13 @@ There is no `package.json` here — nothing at runtime or in the test suite need
 
 - `js/layer_a.js` — port of `text_unicode.py` (`clean`, `inspect`, `decide`)
 - `js/image_meta.js` — port of `image_meta.py` (PNG/JPEG/WebP/AVIF/HEIC/BMP/GIF/TIFF inspect + strip)
-- `js/api.js` — client for `/health /capabilities /inspect /clean`, plus the optional `/llm-config` and `/llm` rewrite calls
+- `js/stylometry.js` — port of `score_stylometry.py` (burstiness / MATTR / AI-phrase density; heuristic, not a watermark detector)
+- `js/detectors.js` — the Inspector's detector registry: one result contract for the character, metadata and statistical layers, plus `summarize()` / `compare()` for the Overall box and the before/after view
+- `js/api.js` — client for `/health /capabilities /inspect /clean /detect`, plus the optional `/llm-config` + `/llm` rewrite calls and `/stat-config` + `/stat` sidecar calls
 - `js/i18n.js`, `js/app.js`, `css/app.css`, `index.html` — UI (English / 繁體中文 / 简体中文, light/dark, keyboard-accessible). The locale is picked from `navigator.languages` and remembered in `localStorage`; adding a language is one entry in `LANGS` plus one dictionary in `js/i18n.js`.
-- `tests/test_layer_a_parity.py`, `tests/test_image_meta_parity.py` — cross-engine parity vs the upstream checkout (skipped if `node` or the checkout is missing)
-- `serve_local.py` — same-origin static + `/api` proxy, and the optional `/llm` rewrite proxy
+- `tests/test_layer_a_parity.py`, `tests/test_image_meta_parity.py`, `tests/test_stylometry_parity.py` — cross-engine parity vs the upstream checkout (skipped if `node` or the checkout is missing)
+- `serve_local.py` — same-origin static + `/api` proxy, the optional `/llm` rewrite proxy and the optional `/stat` sidecar proxy
+- `sidecar/` — the statistical-detector sidecar (its own `requirements.txt`; never part of the page)
 - `scripts/check-upstream.mjs` — run it with `node scripts/check-upstream.mjs`; hashes the upstream Python modules against `scripts/upstream-sources.json`; `.github/workflows/upstream-check.yml` runs it and the parity suite daily and files an issue when either signal fires. Parity catches behaviour that changed; the hashes catch changes the fixtures do not reach, such as a newly supported format.
 
 No build step, no dependencies at runtime. CSP: `default-src 'self'; connect-src *` (the latter so you can point at your own server).
