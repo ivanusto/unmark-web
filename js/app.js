@@ -101,7 +101,7 @@
   function runText() {
     const text = inputEl.value;
     const box = $("text-report-box"), tags = $("text-report-tags");
-    if (!text) { outputEl.textContent = ""; $("char-count-in").textContent = t("chars", { n: 0 }); $("char-count-out").textContent = t("chars", { n: 0 }); box.classList.remove("show"); return; }
+    if (!text) { outputEl.textContent = ""; $("char-count-in").textContent = t("chars", { n: 0 }); $("char-count-out").textContent = t("chars", { n: 0 }); box.classList.remove("show"); clearRewriteOutput(); return; }
     const { cleaned, stats } = LayerA.clean(text, textOptions());
     outputEl.textContent = cleaned;
     $("char-count-in").textContent = t("chars", { n: stats.input_length });
@@ -115,6 +115,7 @@
     }
     if (!any) tags.appendChild(el("span", "tag-badge clean", t("cleanText")));
     box.classList.add("show");
+    clearRewriteOutput();          // stale rewrites must not outlive their input
   }
   const runTextDebounced = debounce(runText, 120);
   inputEl.addEventListener("input", runTextDebounced);
@@ -126,6 +127,107 @@
     try { await navigator.clipboard.writeText(text); toast(t("copied")); }
     catch (_) { toast(t("copyFailed"), "⚠️"); }
   });
+
+  // ---------------------------------------------------------------- AI rewrite (local endpoint only)
+  /* Opt-in and local-only: the panel exists only when serve_local.py reports a
+   * configured OpenAI-compatible endpoint. The request goes same-origin to
+   * /llm, so no key ever lives in the browser and the hosted HTTPS build — which
+   * cannot reach a plain-HTTP local endpoint anyway — simply never shows it. */
+  const REWRITE_KEY = "unmark-web.rewrite";
+  const rewrite = { enabled: false, busy: false, ctrl: null, customPrompt: null };
+
+  function saveRewritePrefs() {
+    try {
+      const data = { model: $("rewrite-model").value };
+      if (rewrite.customPrompt) data.prompt = rewrite.customPrompt;   // defaults follow the UI language instead
+      localStorage.setItem(REWRITE_KEY, JSON.stringify(data));
+    } catch (_) { /* storage unavailable (file://, private mode) */ }
+  }
+
+  function applyRewritePromptDefault() {
+    if (rewrite.enabled && rewrite.customPrompt == null) $("rewrite-prompt").value = t("rewritePromptDefault");
+  }
+
+  function clearRewriteOutput() {
+    if (rewrite.enabled && !rewrite.busy) $("rewrite-output").textContent = "";
+  }
+
+  function setRewriteBusy(on) {
+    rewrite.busy = on;
+    $("btn-rewrite").disabled = on;
+    $("btn-rewrite-cancel").hidden = !on;
+  }
+
+  async function runRewrite() {
+    if (rewrite.busy) return;
+    const text = outputEl.textContent;
+    if (!text.trim()) { toast(t("rewriteEmpty"), "⚠️"); return; }
+    const out = $("rewrite-output");
+    out.textContent = t("rewriteBusy");
+    rewrite.ctrl = new AbortController();
+    setRewriteBusy(true);
+    try {
+      const res = await WmApi.llmRewrite($("rewrite-prompt").value, text, $("rewrite-model").value.trim(), rewrite.ctrl.signal);
+      // The user may have kept typing; a reply that no longer matches what is on
+      // screen is dropped rather than shown against the wrong source text.
+      if (outputEl.textContent !== text) { out.textContent = ""; return; }
+      const msg = res && res.choices && res.choices[0] && res.choices[0].message;
+      const content = msg && typeof msg.content === "string" ? msg.content.trim() : "";
+      if (!content) throw new Error("empty response from the endpoint");
+      out.textContent = content;                       // textContent: model output is never markup here
+    } catch (e) {
+      const reason = String((e && e.message) || e);
+      out.textContent = "";
+      toast(reason === "cancelled" ? t("rewriteCancelled") : t("rewriteFailed", { msg: reason }), "⚠️");
+    } finally {
+      setRewriteBusy(false);
+      rewrite.ctrl = null;
+    }
+  }
+
+  async function initRewrite() {
+    let cfg = null;
+    try { cfg = await WmApi.llmConfig(); } catch (_) { /* not served locally, or no proxy */ }
+    rewrite.enabled = !!(cfg && cfg.enabled);
+    $("rewrite-box").hidden = !rewrite.enabled;
+    $("rewrite-hint").hidden = rewrite.enabled;
+    if (!rewrite.enabled) return;
+
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(REWRITE_KEY) || "{}") || {}; } catch (_) { /* ignore */ }
+    rewrite.customPrompt = typeof saved.prompt === "string" && saved.prompt.trim() ? saved.prompt : null;
+    $("rewrite-prompt").value = rewrite.customPrompt || t("rewritePromptDefault");
+    $("rewrite-model").value = saved.model || cfg.model || "";
+
+    $("rewrite-prompt").addEventListener("change", () => {
+      const v = $("rewrite-prompt").value;
+      rewrite.customPrompt = v.trim() && v !== t("rewritePromptDefault") ? v : null;
+      if (rewrite.customPrompt == null) $("rewrite-prompt").value = t("rewritePromptDefault");
+      saveRewritePrefs();
+    });
+    $("rewrite-model").addEventListener("change", saveRewritePrefs);
+    $("btn-rewrite").addEventListener("click", runRewrite);
+    $("btn-rewrite-cancel").addEventListener("click", () => { if (rewrite.ctrl) rewrite.ctrl.abort(); });
+    $("btn-copy-rewrite").addEventListener("click", async () => {
+      const text = $("rewrite-output").textContent; if (!text) return;
+      try { await navigator.clipboard.writeText(text); toast(t("copied")); }
+      catch (_) { toast(t("copyFailed"), "⚠️"); }
+    });
+
+    // Best-effort: many OpenAI-compatible servers expose /v1/models, some don't.
+    try {
+      const list = await WmApi.llmModels();
+      const ids = ((list && list.data) || []).map((m) => m && m.id).filter((id) => typeof id === "string");
+      const dl = $("rewrite-model-list");
+      dl.replaceChildren();
+      for (const id of ids.slice(0, 200)) {
+        const opt = document.createElement("option");
+        opt.value = id;
+        dl.appendChild(opt);
+      }
+      if (!$("rewrite-model").value && ids.length === 1) $("rewrite-model").value = ids[0];
+    } catch (_) { /* no model listing — the free-text field still works */ }
+  }
 
   // ---------------------------------------------------------------- tabs (WAI-ARIA)
   const tabs = [...document.querySelectorAll('[role="tab"]')];
@@ -279,9 +381,9 @@
       I18n.setLang(sel.value);
       sel.value = I18n.lang;                            // setLang normalises unknown codes
       I18n.save();
-      runText(); renderEngineState();
+      runText(); renderEngineState(); applyRewritePromptDefault();
     });
   }
 
-  initTheme(); initLang(); initSettings(); runText(); renderEngineState();
+  initTheme(); initLang(); initSettings(); runText(); renderEngineState(); initRewrite();
 })();

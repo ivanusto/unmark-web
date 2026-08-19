@@ -40,6 +40,27 @@ Live demo: [https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/u
 
 The API key is only sent as `Authorization: Bearer …` to the URL you configured, and only stored in `localStorage` if you tick *Remember in this browser*.
 
+## AI rewrite (optional, local only)
+
+Cleaning strips the marks; it does not touch the prose. If you also want the text rewritten out of its AI cadence, `serve_local.py` can proxy an **OpenAI-compatible chat endpoint of your own** — a local model runner, or anything else you host:
+
+```bash
+python3 serve_local.py \
+  --llm-upstream http://<your-llm-host>:<port> \    # base URL, without the /v1 suffix
+  --llm-model <model-id> \                          # optional; prefills the model field
+  --llm-api-key "$YOUR_KEY"                         # optional; stays server-side
+# equivalently: UNMARK_LLM_URL / UNMARK_LLM_MODEL / UNMARK_LLM_API_KEY
+```
+
+A *Rewrite* panel then appears under the cleaned text, with an editable instruction prompt. It sends `POST /llm/v1/chat/completions` **same-origin**, so the key never enters the browser and the watermarks service's own bearer token is never attached to it.
+
+Three things worth being explicit about:
+
+- **It is off by default.** With no `--llm-upstream`, `/llm/*` answers 404 and the panel is not rendered at all.
+- **The hosted build cannot offer it.** [The demo](https://ivanusto.github.io/unmark-web/) is HTTPS, and browsers block an HTTPS page from calling a plain-HTTP local endpoint. This is a `serve_local.py` feature by construction, not an oversight.
+- **Cleaning stays offline; rewriting does not.** Text you rewrite is sent to the endpoint you configured. Everything on the *Text* and *Files* tabs is still processed in the page unless you connect a server.
+
+
 ## Development
 
 ```bash
@@ -53,10 +74,10 @@ There is no `package.json` here — nothing at runtime or in the test suite need
 
 - `js/layer_a.js` — port of `text_unicode.py` (`clean`, `inspect`, `decide`)
 - `js/image_meta.js` — port of `image_meta.py` (PNG/JPEG/WebP/AVIF/HEIC/BMP/GIF/TIFF inspect + strip)
-- `js/api.js` — client for `/health /capabilities /inspect /clean`
+- `js/api.js` — client for `/health /capabilities /inspect /clean`, plus the optional `/llm-config` and `/llm` rewrite calls
 - `js/i18n.js`, `js/app.js`, `css/app.css`, `index.html` — UI (English / 繁體中文 / 简体中文, light/dark, keyboard-accessible). The locale is picked from `navigator.languages` and remembered in `localStorage`; adding a language is one entry in `LANGS` plus one dictionary in `js/i18n.js`.
 - `tests/test_layer_a_parity.py`, `tests/test_image_meta_parity.py` — cross-engine parity vs the upstream checkout (skipped if `node` or the checkout is missing)
-- `serve_local.py` — same-origin static + `/api` proxy
+- `serve_local.py` — same-origin static + `/api` proxy, and the optional `/llm` rewrite proxy
 - `scripts/check-upstream.mjs` — run it with `node scripts/check-upstream.mjs`; hashes the upstream Python modules against `scripts/upstream-sources.json`; `.github/workflows/upstream-check.yml` runs it and the parity suite daily and files an issue when either signal fires. Parity catches behaviour that changed; the hashes catch changes the fixtures do not reach, such as a newly supported format.
 
 No build step, no dependencies at runtime. CSP: `default-src 'self'; connect-src *` (the latter so you can point at your own server).

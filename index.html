@@ -118,6 +118,31 @@
             <button class="btn btn-secondary" id="btn-clear-text" type="button" data-i18n="btnClear">Clear</button>
             <button class="btn btn-primary" id="btn-copy-text" type="button"><span aria-hidden="true">📋</span><span data-i18n="btnCopy">Copy cleaned text</span></button>
           </div>
+
+          <!-- Optional AI rewrite. Hidden unless serve_local.py reports a configured
+               local endpoint (GET /llm-config) — on GitHub Pages it never appears. -->
+          <div class="report-box rewrite-box" id="rewrite-box" hidden>
+            <div class="report-title"><span aria-hidden="true">✨</span><span id="lbl-rewrite-header" data-i18n="rewriteTitle">AI rewrite</span></div>
+            <p class="footnote" data-i18n="rewriteNote">Sends the cleaned text to the local endpoint you configured. Cleaning itself never leaves this device.</p>
+            <details class="rewrite-prompt mt-14">
+              <summary data-i18n="rewritePromptLabel">Rewrite instructions</summary>
+              <textarea id="rewrite-prompt" rows="4" spellcheck="false"></textarea>
+            </details>
+            <div class="rewrite-controls mt-14">
+              <label for="rewrite-model" data-i18n="rewriteModelLabel">Model</label>
+              <input id="rewrite-model" type="text" spellcheck="false" autocomplete="off" list="rewrite-model-list" />
+              <datalist id="rewrite-model-list"></datalist>
+              <button class="btn btn-primary" id="btn-rewrite" type="button" data-i18n="btnRewrite">Rewrite</button>
+              <button class="btn btn-secondary" id="btn-rewrite-cancel" type="button" hidden data-i18n="btnRewriteCancel">Cancel</button>
+            </div>
+            <div class="textarea-wrapper mt-14">
+              <div class="output-preview compact" id="rewrite-output" tabindex="0" aria-live="polite" aria-labelledby="lbl-rewrite-header"></div>
+            </div>
+            <div class="actions-bar mt-14">
+              <button class="btn btn-secondary" id="btn-copy-rewrite" type="button"><span aria-hidden="true">📋</span><span data-i18n="btnCopyRewrite">Copy rewritten text</span></button>
+            </div>
+          </div>
+          <p class="footnote rewrite-hint" id="rewrite-hint" hidden data-i18n="rewriteDisabledHint"></p>
         </div>
       </div>
 
