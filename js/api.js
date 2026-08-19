@@ -51,27 +51,45 @@
     return u.replace(/\/+$/, "");
   }
 
-  function headers(json) {
+  function headers(json, auth = true) {
     const h = {};
     if (json) h["Content-Type"] = "application/json";
-    if (config.apiKey) h["Authorization"] = "Bearer " + config.apiKey;
+    if (auth && config.apiKey) h["Authorization"] = "Bearer " + config.apiKey;
     return h;
   }
 
-  async function request(method, path, body, { timeoutMs = 120000 } = {}) {
-    if (!config.baseUrl) throw new ApiError("no server configured", 0);
+  /* `base` defaults to the configured watermarks service; the rewrite proxy
+   * passes its own same-origin prefix. `auth` must be false for anything other
+   * than that service — otherwise the service's bearer token would be sent to
+   * an unrelated endpoint. `signal` lets the caller cancel before the timeout. */
+  async function request(method, path, body, { timeoutMs = 120000, base = null, auth = true, signal = null } = {}) {
+    const baseUrl = base === null ? config.baseUrl : base;
+    if (base === null && !config.baseUrl) throw new ApiError("no server configured", 0);
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const abort = () => ctrl.abort();
+    let timedOut = false;
+    const t = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+    if (signal) {
+      if (signal.aborted) ctrl.abort();
+      else signal.addEventListener("abort", abort, { once: true });
+    }
     let res;
     try {
-      const origin = config.baseUrl.startsWith("/") && root.location ? root.location.origin : "";
-      res = await fetch(origin + config.baseUrl + path, {
-        method, headers: headers(!!body), body: body ? JSON.stringify(body) : undefined,
+      // Same-origin whenever the combined path is absolute — covers "/api",
+      // "/llm" and the bare "" base used by /llm-config alike.
+      const url = baseUrl + path;
+      const origin = url.startsWith("/") && root.location ? root.location.origin : "";
+      res = await fetch(origin + url, {
+        method, headers: headers(!!body, auth), body: body ? JSON.stringify(body) : undefined,
         mode: "cors", cache: "no-store", signal: ctrl.signal,
       });
     } catch (e) {
+      if (e.name === "AbortError" && !timedOut) throw new ApiError("cancelled", 0);
       throw new ApiError(e.name === "AbortError" ? "request timed out" : "network/CORS error — is the server running and allowing this origin?", 0);
-    } finally { clearTimeout(t); }
+    } finally {
+      clearTimeout(t);
+      if (signal) signal.removeEventListener("abort", abort);
+    }
     let payload = null;
     try { payload = await res.json(); } catch (_) { /* non-JSON */ }
     if (!res.ok || (payload && payload.ok === false)) {
@@ -103,6 +121,18 @@
     capabilities: () => request("GET", "/capabilities", null, { timeoutMs: 5000 }),
     inspect: (u8, name) => request("POST", "/inspect", { file: bytesToBase64(u8), name }),
     clean: (u8, name, options) => request("POST", "/clean", { file: bytesToBase64(u8), name, options: options || {} }),
+
+    /* Optional AI rewrite. Only serve_local.py answers these: /llm-config says
+     * whether an endpoint is configured, /llm proxies to it. Both are
+     * same-origin and never carry the watermarks service's API key. */
+    llmConfig: () => request("GET", "/llm-config", null, { base: "", auth: false, timeoutMs: 3000 }),
+    llmModels: () => request("GET", "/v1/models", null, { base: "/llm", auth: false, timeoutMs: 5000 }),
+    llmRewrite: (systemPrompt, text, model, signal) => request("POST", "/v1/chat/completions", {
+      model,
+      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: text }],
+      stream: false,
+      temperature: 0.3,
+    }, { base: "/llm", auth: false, timeoutMs: 300000, signal }),
   };
   root.WmApi = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;

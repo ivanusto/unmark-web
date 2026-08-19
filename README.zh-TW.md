@@ -40,6 +40,27 @@
 
 API 金鑰只會以 `Authorization: Bearer …` 送往你所設定的 URL，而且只有在勾選 *記住於此瀏覽器* 時才會存入 `localStorage`。
 
+## AI 改寫（選用，僅限本機）
+
+清洗只處理記號，不會動到文句本身。如果你還想把文字從 AI 的腔調裡改寫出來，`serve_local.py` 可以代理**你自己的 OpenAI 相容對話端點**——本機模型或任何你自架的服務都行：
+
+```bash
+python3 serve_local.py \
+  --llm-upstream http://<your-llm-host>:<port> \    # base URL，不含 /v1 後綴
+  --llm-model <model-id> \                          # 選填；用來預填模型欄位
+  --llm-api-key "$YOUR_KEY"                         # 選填；只留在伺服器端
+# 也可以用環境變數：UNMARK_LLM_URL / UNMARK_LLM_MODEL / UNMARK_LLM_API_KEY
+```
+
+清洗結果下方會出現「AI 改寫」面板，附一個可編輯的指示 prompt。它以**同源**方式送出 `POST /llm/v1/chat/completions`，所以金鑰不會進到瀏覽器，watermarks 服務自己的 bearer token 也不會被一起帶上。
+
+有三件事要講明白：
+
+- **預設關閉。** 沒有給 `--llm-upstream` 時，`/llm/*` 一律回 404，面板根本不會出現。
+- **線上版做不到這件事。** [Demo 站](https://ivanusto.github.io/unmark-web/)是 HTTPS，而瀏覽器會擋掉 HTTPS 頁面呼叫純 HTTP 的本機端點。這是 `serve_local.py` 專屬的功能，並非疏漏。
+- **清洗仍然離線，改寫則否。** 送去改寫的文字會離開這台裝置，抵達你設定的端點。「文字」與「檔案」分頁的處理則照舊留在頁面內，除非你另外連了伺服器。
+
+
 ## 開發
 
 ```bash
@@ -53,10 +74,10 @@ node scripts/check-upstream.mjs                                                 
 
 - `js/layer_a.js` —— `text_unicode.py` 的移植（`clean`、`inspect`、`decide`）
 - `js/image_meta.js` —— `image_meta.py` 的移植（PNG/JPEG/WebP/AVIF/HEIC/BMP/GIF/TIFF 檢查與清除）
-- `js/api.js` —— `/health /capabilities /inspect /clean` 的客戶端
+- `js/api.js` —— `/health /capabilities /inspect /clean` 的客戶端，以及選用的 `/llm-config` 與 `/llm` 改寫呼叫
 - `js/i18n.js`、`js/app.js`、`css/app.css`、`index.html` —— UI（英文／繁體中文／簡體中文、淺色／深色、支援鍵盤操作）。語系依 `navigator.languages` 判斷並記在 `localStorage`；新增語言只需在 `js/i18n.js` 的 `LANGS` 加一列、再加一本字典。
 - `tests/test_layer_a_parity.py`、`tests/test_image_meta_parity.py` —— 與上游 checkout 的跨引擎 parity 測試（缺少 `node` 或該 checkout 時會跳過）
-- `serve_local.py` —— 同源靜態伺服器 + `/api` 代理
+- `serve_local.py` —— 同源靜態伺服器 + `/api` 代理，以及選用的 `/llm` 改寫代理
 - `scripts/check-upstream.mjs` —— 以 `node scripts/check-upstream.mjs` 執行；以 `scripts/upstream-sources.json` 記錄的雜湊比對上游 Python 模組；`.github/workflows/upstream-check.yml` 每天執行它與 parity 測試，任一訊號觸發就開 issue。parity 抓行為改變，雜湊抓測試涵蓋不到的變動（例如上游新增了一種格式）。
 
 沒有建置步驟，執行期零相依。CSP：`default-src 'self'; connect-src *`（後者是為了讓你能指向自己的伺服器）。
