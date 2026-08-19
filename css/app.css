@@ -647,6 +647,11 @@ footer a:hover {
 .rewrite-box { display: block; }          /* not gated on .show; JS toggles [hidden] */
 .rewrite-box[hidden] { display: none; }
 .output-preview.compact { min-height: 160px; }
+/* The rewrite output sits under the two-column grid, so it must not inherit the
+   280px min-height those side-by-side boxes need — that left a dead gap between
+   the output and the copy button. */
+.rewrite-box .textarea-wrapper { min-height: 0; flex: none; }
+.rewrite-box .output-preview.compact { height: auto; }
 .rewrite-prompt summary {
   cursor: pointer;
   font-size: 12.5px;

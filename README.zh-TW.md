@@ -12,6 +12,11 @@
 
 線上示範：[https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/unmark-web/) · 本機執行：直接開啟 `index.html`，或執行 `python3 serve_local.py`。
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+  <img alt="在瀏覽器中執行的「文字」分頁：左側是貼上的原文，右側是清洗後的版本，中間的「檢測結果」列出被移除的零寬字元、零寬不斷行空格與軟連字號，以及被正規化的全形空格；下方是選用的 AI 改寫面板與它產生的改寫結果。" src="docs/screenshot-light.png">
+</picture>
+
 ## 功能範圍（與不做的事）
 
 | 輸入 | 瀏覽器引擎 | 伺服器引擎（`server.py`） |
