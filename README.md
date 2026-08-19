@@ -45,10 +45,14 @@ The API key is only sent as `Authorization: Bearer …` to the URL you configure
 Cleaning strips the marks; it does not touch the prose. If you also want the text rewritten out of its AI cadence, `serve_local.py` can proxy an **OpenAI-compatible chat endpoint of your own** — a local model runner, or anything else you host:
 
 ```bash
+# --llm-upstream  base URL, without the /v1 suffix
+# --llm-model     optional; prefills the model field
+# --llm-api-key   optional; stays server-side
 python3 serve_local.py \
-  --llm-upstream http://<your-llm-host>:<port> \    # base URL, without the /v1 suffix
-  --llm-model <model-id> \                          # optional; prefills the model field
-  --llm-api-key "$YOUR_KEY"                         # optional; stays server-side
+  --llm-upstream http://<your-llm-host>:<port> \
+  --llm-model <model-id> \
+  --llm-api-key "$YOUR_KEY"
+
 # equivalently: UNMARK_LLM_URL / UNMARK_LLM_MODEL / UNMARK_LLM_API_KEY
 ```
 
