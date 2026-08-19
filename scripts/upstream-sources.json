@@ -1,5 +1,5 @@
 {
-  "note": "The Python modules js/layer_a.js and js/image_meta.js were ported from. scripts/check-upstream.mjs compares the live content against these hashes. The parity suite proves the ported behaviour still matches for the cases it covers; this catches the rest \u2014 new options, new formats, anything the fixtures do not exercise. When one moves, re-port it and update `sha256` in the same commit.",
+  "note": "The Python modules js/layer_a.js, js/image_meta.js and js/stylometry.js were ported from. scripts/check-upstream.mjs compares the live content against these hashes. The parity suite proves the ported behaviour still matches for the cases it covers; this catches the rest \u2014 new options, new formats, anything the fixtures do not exercise. When one moves, re-port it and update `sha256` in the same commit.",
   "followUp": "If the parity suite is still green, the change is probably additive \u2014 a new format or option the fixtures do not reach. Add fixtures covering it, or the gap stays invisible the next time too.",
   "sources": [
     {
@@ -20,6 +20,16 @@
       "mirrors": [
         "js/image_meta.js",
         "tests/test_image_meta_parity.py"
+      ]
+    },
+    {
+      "id": "watermarks-remover/service/scripts/score_stylometry.py",
+      "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/score_stylometry.py",
+      "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/score_stylometry.py",
+      "sha256": "cd3dae134d5f641120218fd525afd523d4a0bfb52d4d73c0e92dc04e3bcc6d59",
+      "mirrors": [
+        "js/stylometry.js",
+        "tests/test_stylometry_parity.py"
       ]
     }
   ]
