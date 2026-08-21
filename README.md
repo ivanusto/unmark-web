@@ -91,7 +91,7 @@ The *Inspector* tab is a detection lab, deliberately separated from the cleaners
 | --- | --- | --- | --- |
 | **Character** | invisible / format Unicode, bidi controls, homoglyphs & exotic spaces | browser (`js/layer_a.js`) | deterministic — Layer A can strip it, and re-inspecting proves it |
 | **Metadata** | C2PA / Content Credentials, XMP, EXIF / TIFF tags, AI-generator markers, other | browser (`js/image_meta.js`) | provenance or generator metadata is present in the container |
-| **Statistical** | Kirchenbauer (KGW green-list), SynthID-Text, upstream `/detect`, TextSeal (placeholder), stylometry (heuristic) | local sidecar / upstream server / browser | the token sequence carries a sampling watermark **for the key you tested** — nothing more |
+| **Statistical** | keyed-Gumbel / EXP, Kirchenbauer (KGW green-list), SynthID-Text, upstream `/detect`, TextSeal (placeholder), stylometry (heuristic) | browser (`js/gumbel.js`) / local sidecar / upstream server | the token sequence carries a sampling watermark **for the key you tested**, nothing more |
 
 Every detector returns the same shape, and *Copy JSON report* exports exactly that:
 
@@ -108,7 +108,21 @@ Three rules the UI enforces, because honesty is the feature:
 
 - **Detector and cleaner are separate.** *Clean (Layer A) & re-inspect* runs the cleaner once and shows every detector before / after with a *changed?* column. When the statistical rows come back identical, the Overall box says so: *Layer A cleaning did not affect the statistical watermark detectors.*
 - **A heuristic can never say "detected".** Stylometry (burstiness, MATTR, AI-phrase density — upstream's `score_stylometry.py`, ported) is capped at *uncertain* and labelled *heuristic* on the row.
-- **"Unavailable" is not "clean".** Statistical detectors need the generator's key, tokenizer and a model. On the hosted HTTPS page they report *unavailable* and the Overall line reads *Statistical watermarks were not tested here — they cannot be ruled out.* A *clean* from the sidecar is likewise scoped to the key and scheme you tested.
+- **"Unavailable" is not "clean".** Most statistical detectors need the generator's key, tokenizer and a model. On the hosted HTTPS page those report *unavailable* and the Overall line reads *Statistical watermarks were not tested here — they cannot be ruled out.* A *clean* is likewise scoped to the key and scheme you tested.
+
+### Keyed-Gumbel (EXP), in the browser
+
+The one statistical detector that needs no sidecar, no model weights and no network: a port of upstream's `detect_gumbel.py` into [`js/gumbel.js`](js/gumbel.js), with its own SHA-256 and HMAC so it runs synchronously and works from `file://` as well as from the hosted page. Open **Keyed-Gumbel (EXP) key** on the Inspector tab and paste the key the text was generated with (a passphrase, or `0x…` for raw bytes). The key is held in the page for the length of the run: it is never stored, never sent anywhere, and never written into the JSON report.
+
+The detector replays the keyed sampler's noise from the text alone. For each position it derives `seed = HMAC(key, last H tokens)` and `u = HMAC(seed, token)`, sums `-log(1 - u)`, and compares that against the `Gamma(counted, 1)` distribution it would follow if nothing were watermarked. Repeated context windows are skipped, because the generator falls back to ordinary randomness when a window recurs.
+
+Read the result the way upstream intends it:
+
+- It is a **same-key replay**. It is valid only against the key, tokenizer and PRF layout used at generation, which in practice means a self-hosted engine you control.
+- A **negative proves nothing**. Unwatermarked text, another provider's key and human writing all sit at chance, which is why the row says *not this key* rather than *no watermark*.
+- The PRF layout is a **clean-room instantiation** of the scheme (HMAC-SHA256 over packed token ids), auditable but not bit-compatible with any particular engine's kernel. Exact replay against a real engine needs that engine's tokenizer and PRF.
+
+The default context window is 4 tokens and the default verdict threshold is `p < 1e-6`; both are adjustable next to the key field. The score column shows `-log10(p)` against `-log10(threshold)`, so bigger is stronger evidence, and the exact p-value is the first evidence row.
 
 ### Statistical sidecar (optional, local only)
 

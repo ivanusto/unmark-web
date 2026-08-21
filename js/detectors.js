@@ -196,6 +196,54 @@
     },
   });
 
+  /* Keyed-Gumbel (Aaronson EXP) replay, upstream detect_gumbel.py ported to
+   * js/gumbel.js. The only statistical detector that runs with no sidecar and
+   * no model weights: it needs the generation key and nothing else, so it is
+   * also the only one that can reach a verdict on the hosted page. */
+  register({
+    id: "gumbel", layer: "statistical", local: true, requires_key: true, requires_model: false,
+    applies: isText,
+    run(input, ctx) {
+      const def = byId("gumbel");
+      if (!root.Gumbel || typeof root.Gumbel.detectText !== "function") {
+        return result(def, { status: "unavailable", noteKey: "inspect.noteNoGumbel" });
+      }
+      const cfg = (ctx && ctx.gumbel) || {};
+      const key = typeof cfg.key === "string" ? cfg.key.trim() : "";
+      if (!key) return result(def, { status: "unavailable", noteKey: "inspect.noteNoGumbelKey" });
+      let rep;
+      try {
+        rep = root.Gumbel.detectText(input.text, key, {
+          window: cfg.window || root.Gumbel.DEFAULT_WINDOW,
+          threshold: cfg.threshold || root.Gumbel.DEFAULT_THRESHOLD,
+        });
+      } catch (e) {
+        return result(def, { status: "error", note: String((e && e.message) || e) });
+      }
+      const meta = { window: rep.window, counted: rep.counted, tokens_total: rep.tokens_total, scheme: rep.scheme };
+      if (!rep.counted) return result(def, { status: "not_tested", noteKey: "inspect.noteGumbelShort", meta });
+      return result(def, {
+        // score and threshold are both on the -log10(p) scale, so a bigger
+        // number is stronger evidence and the table's "score / threshold"
+        // column reads the same way it does for every other detector.
+        status: rep.is_watermarked ? "detected" : "clean",
+        score: rep.score, threshold: -Math.log10(rep.threshold),
+        // No `confidence`: the table renders that field as "p=", and a Gumbel
+        // p-value of 1.2e-140 would print as p=0.000 while a 0-to-1 confidence
+        // of 1 would print as p=1.000. Both read as the opposite of the truth.
+        // The real p-value is the first evidence row.
+        confidence: null,
+        evidence: [
+          { label: "p_value", detail: rep.p_value.toExponential(3) },
+          { label: "statistic", detail: String(rep.statistic) },
+          { label: "counted", detail: `${rep.counted} of ${rep.tokens_total} tokens` },
+          { label: "skipped", detail: `${rep.skipped_no_context} no-context, ${rep.skipped_repeated} repeated-window` },
+        ],
+        noteKey: "inspect.noteGumbelReplay", meta,
+      });
+    },
+  });
+
   // Local statistical sidecar (sidecar/unmark_stat.py behind serve_local.py's
   // /stat proxy). One POST scores every sidecar detector; the rows share it.
   const SIDECAR_IDS = ["kgw", "synthid-text"];
