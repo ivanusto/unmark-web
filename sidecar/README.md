@@ -1,4 +1,4 @@
-# unmark-stat — statistical text-watermark sidecar (local only)
+# unmark-stat: statistical text-watermark sidecar (local only)
 
 `unmark_stat.py` is a small, stdlib-HTTP Python service that gives the web UI
 **real** detection of two published token-level ("statistical") text watermarks,
@@ -61,7 +61,7 @@ cd .. && python3 serve_local.py --stat-upstream http://127.0.0.1:8767 [--stat-ap
 
 `serve_local.py` injects the sidecar key itself and never forwards the
 browser's `Authorization` header to `/stat/*`; `GET /stat-config` tells the UI
-only `{"enabled": true|false}` — no URL, no key.
+only `{"enabled": true|false}`, with no URL and no key.
 
 ## API
 
@@ -85,9 +85,9 @@ time (a global lock); long texts are truncated to 4096 tokens before scoring.
 
 Both schemes are keyed, so the sidecar ships two profiles, `a` and `b`:
 
-- **KGW** — the key is one integer (`hashing_key`). `a` = 15485863 (the
+- **KGW**: the key is one integer (`hashing_key`). `a` = 15485863 (the
   original KGW default), `b` = 32452843. Any other integer is "another key".
-- **SynthID-Text** — `keys/key-a.json` and `keys/key-b.json`, the public
+- **SynthID-Text**: `keys/key-a.json` and `keys/key-b.json`, the public
   experiment keys from xlr8harder/synthid, each paired with its own detector
   bundle (`same-model-matched/key-{a,b}/model`). See [`keys/README.md`](keys/README.md):
   they are public, they must not be reused for deployment, and text marked
@@ -99,10 +99,10 @@ Both schemes are keyed, so the sidecar ships two profiles, `a` and `b`:
   50 scored tokens → `uncertain` ("too short"). Evidence: z-score, one-sided
   p-value (exact normal tail), green fraction, tokens scored. Two choices
   worth knowing: seeding is `lefthash` (greenlist seeded by the previous
-  token — the paper's `simple_1`), because HF's `selfhash` with context width
+  token, the paper's `simple_1`), because HF's `selfhash` with context width
   1 seeds on the candidate token alone and so becomes a fixed green/red split
-  of the vocabulary — measured here, unwatermarked text then scored z ≈ ±4
-  from its token mix alone; and generation uses δ = 3.0 rather than the
+  of the vocabulary (measured here, unwatermarked text then scored z ≈ ±4
+  from its token mix alone); and generation uses δ = 3.0 rather than the
   paper's 2.0, because on this low-entropy instruct model δ = 2.0 gave
   z ≈ 4.4–5.2 at 450 tokens (borderline) while 3.0 gives z ≈ 7. δ does not
   enter detection, only γ, the seeding and the key do.
@@ -118,7 +118,7 @@ Both schemes are keyed, so the sidecar ships two profiles, `a` and `b`:
   bundle's `sampling-table.int64le`; if it differs (torch's CPU and CUDA RNG
   streams differ), the bundle's table is loaded instead and `meta.table` says so.
 
-## Honest limits — read before trusting a verdict
+## Honest limits: read before trusting a verdict
 
 - **A watermark is only visible to its own key.** Detection is valid for text
   produced with the *same* scheme, the *same* key and the *same* tokenizer.
@@ -127,7 +127,7 @@ Both schemes are keyed, so the sidecar ships two profiles, `a` and `b`:
   be judged here**, and the sidecar will happily call it `clean`.
 - **The SynthID detectors are for one model.** They were trained on
   `Qwen3-4B-Instruct-2507` outputs sampled at temperature 0.7 / top-k 100 /
-  top-p 1.0 (the upstream "paper" profile — `/generate` uses exactly that).
+  top-p 1.0 (the upstream "paper" profile, which is exactly what `/generate` uses).
   Other models or samplers shift the score distribution; upstream measured
   Key-A detection dropping from ≈ 71 % to ≈ 34 % just by changing the sampler.
 - **Short text says little.** Upstream's same-model detectors reach ≈ 71 %
@@ -138,18 +138,18 @@ Both schemes are keyed, so the sidecar ships two profiles, `a` and `b`:
   whole point of the statistical-watermark row in the app's table.
 - **Layer A does not touch it.** Zero-width / homoglyph cleaning changes
   characters, not the token-choice statistics. Re-detecting after cleaning
-  should give the same verdict — that is the demo below, and it is the reason
+  should give the same verdict. That is the demo below, and it is the reason
   the app is explicit that it does not remove statistical watermarks.
 
 ## Demo flow (what the UI walks through)
 
-1. `POST /generate {scheme:"synthid", key_profile:"a", max_new_tokens:400}` — a
-   paragraph watermarked with key A.
+1. `POST /generate {scheme:"synthid", key_profile:"a", max_new_tokens:400}`
+   returns a paragraph watermarked with key A.
 2. `POST /detect {key_profile:"a"}` → SynthID `detected` (posterior ≈ 1.0),
    KGW `clean` (different scheme).
 3. `POST /detect {key_profile:"b"}` → SynthID `clean`/`uncertain` with a low
-   posterior — wrong key, nothing to see.
-4. Run the text through Layer A cleaning in the page — nothing visible changes
+   posterior: wrong key, nothing to see.
+4. Run the text through Layer A cleaning in the page. Nothing visible changes
    (it contained no invisible characters to begin with).
 5. `POST /detect {key_profile:"a"}` again → still `detected`. Cleaning did not
    remove it; only rewriting would.
@@ -172,6 +172,6 @@ the detector is not confident enough to be called clean either.
 
 ## Files
 
-- `unmark_stat.py` — the service (stdlib HTTP; torch/transformers imported lazily)
-- `requirements.txt` — Python deps
-- `keys/` — vendored SynthID experiment keys + provenance
+- `unmark_stat.py`: the service (stdlib HTTP; torch/transformers imported lazily)
+- `requirements.txt`: Python deps
+- `keys/`: vendored SynthID experiment keys + provenance
