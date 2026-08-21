@@ -22,13 +22,24 @@ Live demo: [https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/u
 
 | Input | Browser engine | Server engine (`server.py`) |
 | --- | --- | --- |
-| Pasted text / `.txt` | Layer A: zero-width & bidi controls, variation selectors, tag chars, PUA, other `Cf`; space homoglyphs; optional NFKC / Latin confusables. Preserves load-bearing invisibles (emoji ZWJ/VS16, Persian/Indic ZWNJ, flag tags, Mongolian FVS, Khmer vowels, Hangul fillers, Arabic Cf) exactly like upstream, with a "paranoid" toggle. | same |
+| Pasted text / `.txt` | Layer A: zero-width & bidi controls, variation selectors, tag chars, PUA, Unicode noncharacters, reserved default-ignorables, other `Cf`; space homoglyphs; optional NFKC / Latin confusables. Preserves load-bearing invisibles (emoji ZWJ/VS16, Persian/Indic ZWNJ, flag tags, Mongolian FVS, Khmer vowels, Hangul fillers, Arabic Cf, and layout format controls next to their own script: Egyptian quadrat, Duployan, musical beaming) exactly like upstream, with a "paranoid" toggle. | same |
 | `.md` `.html` `.svg` | Layer A on the text only (metadata tags/frontmatter untouched — flagged in the UI) | full container cleaning (frontmatter keys, `<meta generator>`, XMP, …) |
 | PNG / JPEG / WebP / AVIF / HEIC | drops `tEXt/zTXt/iTXt/eXIf/caBX/c2*` chunks, `APPn` (except JFIF) + `COM` segments, `EXIF/XMP/ICCP/C2PA` RIFF chunks with VP8X flag fix-up, and `jumb/c2pa/uuid` (XMP) ISOBMFF boxes plus their `meta` sub-boxes. Pixels are untouched (no canvas re-encode). "Keep non-AI metadata" mode only drops blocks with AI/C2PA hints. | same, plus optional pixel-domain backends if installed |
 | BMP / GIF / TIFF | BMP: drops the trailing bytes after the pixel payload (the only place BMP metadata can live) and rewrites the file-size field. GIF: drops comment and XMP/unknown application extensions, keeping NETSCAPE2.0 looping and ICC. TIFF (classic and BigTIFF): walks the IFD chains and drops XMP/EXIF/GPS/IPTC/Photoshop/MakerNote tags, patching each IFD in place so strip and tile offsets stay valid. | same |
 | PDF / DOCX / ODT / EPUB | — (needs server) | yes |
 | Statistical text watermarks (Kirchenbauer / KGW, SynthID-Text) | **detect only**, via the optional local [sidecar](sidecar/README.md) (needs a model and the generator's key); never removed — see upstream Layer B for rewriting | via upstream `/detect` (MarkLLM harness) when the server advertises text detectors |
 | Pixel watermarks (SynthID image, …) | **no** | via upstream backends only |
+
+Two consequences of the container rules that surprise people:
+
+* **A cleaned AVIF or HEIC is the same size as the original.** A dropped ISOBMFF box is
+  overwritten with an equal-size `free` box rather than spliced out, because closing the gap
+  would shift every absolute media offset later in the file and break the image. The metadata
+  really is gone: the `free` payload is zeroed.
+* **A truncated file keeps its truncated tail.** If a download was interrupted, the last PNG
+  chunk or ISOBMFF box declares more bytes than the file holds. That tail is copied through
+  verbatim and reported as an action, so a recoverable image is not turned into an unopenable
+  husk that claims it was already clean.
 
 ## Connecting a server
 

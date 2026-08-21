@@ -43,6 +43,17 @@ CASES = [
     "other cf: \U0001BCA0 shorthand, \U00013430 egyptian,   not cf",
     "nfkc: ＡＢ 　 ① ﬁ",
     "mixed ​😀️‍💩​ end \U0001F3F4\U000E0067 stray\U000E0067",
+    # upstream #133: late-assigned carriers, noncharacters, reserved ignorables
+    # and visible-layout Cf controls. Each layout case pairs the control next to
+    # its own script (kept) with the same control adrift in Latin text (stripped),
+    # so one case exercises both branches.
+    "mongolian fvs4 \u1820\u180f ok, stray \u180f",
+    "hangul filler \u3131\u3164 ok, stray \u3164; halfwidth \uffa1\uffa0 ok, stray \uffa0",
+    "noncharacters \ufdd0 \ufffe \U0001FFFF end",
+    "reserved ignorable \u2065 \ufff0 \U000E0000 \U000E0080 \U000E01F0 end",
+    "egyptian \U00013000\U00013430\U00013001 vs floating \U00013430 here",
+    "duployan \U0001BC00\U0001BCA0\U0001BC01 vs floating \U0001BCA0 here",
+    "musical \U0001D100\U0001D173\U0001D101 vs floating \U0001D173 here",
 ]
 
 OPTION_SETS = [
