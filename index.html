@@ -193,6 +193,18 @@
               <select id="inspect-key"><option value="a">A</option><option value="b">B</option></select>
             </label>
           </div>
+          <details class="gumbel-panel mt-14" id="inspect-gumbel">
+            <summary data-i18n="inspectGumbelPanel">Keyed-Gumbel (EXP) key</summary>
+            <p class="footnote" data-i18n="inspectGumbelAbout">Model-free, runs entirely in this page. Enter the key the text was generated with. The key is never stored or sent anywhere, and it is gone when you reload.</p>
+            <div class="rewrite-controls mt-14">
+              <label for="inspect-gumbel-key" data-i18n="inspectGumbelKey">Key</label>
+              <input id="inspect-gumbel-key" type="password" autocomplete="off" spellcheck="false" data-i18n-placeholder="inspectGumbelKeyPlaceholder" placeholder="a passphrase, or 0x… for raw bytes" />
+              <label for="inspect-gumbel-window" data-i18n="inspectGumbelWindow">Context window</label>
+              <input id="inspect-gumbel-window" type="number" min="1" max="32" value="4" />
+              <label for="inspect-gumbel-threshold" data-i18n="inspectGumbelThreshold">p threshold</label>
+              <input id="inspect-gumbel-threshold" type="text" inputmode="decimal" spellcheck="false" value="1e-6" />
+            </div>
+          </details>
           <div class="actions-bar mt-14">
             <button class="btn btn-primary" id="btn-inspect-run" type="button"><span aria-hidden="true">🔬</span><span data-i18n="btnInspect">Inspect</span></button>
             <button class="btn btn-secondary" id="btn-inspect-clean" type="button"><span aria-hidden="true">🧹</span><span data-i18n="btnInspectClean">Clean (Layer A) &amp; re-inspect</span></button>
@@ -243,6 +255,7 @@
   <script src="js/image_meta.js"></script>
   <script src="js/api.js"></script>
   <script src="js/stylometry.js"></script>
+  <script src="js/gumbel.js"></script>
   <script src="js/detectors.js"></script>
   <script src="js/i18n.js"></script>
   <script src="js/app.js"></script>

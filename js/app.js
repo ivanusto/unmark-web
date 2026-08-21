@@ -251,11 +251,24 @@
     if (insp.input && insp.input.kind === "file") return insp.input;
     return { kind: "text", text: inspText.value };
   }
+  /* Keyed-Gumbel settings. The key lives in the DOM for the length of the run
+   * and nowhere else: it is never persisted, never sent over the network and
+   * never written into the JSON report. */
+  function gumbelSettings() {
+    const win = parseInt($("inspect-gumbel-window").value, 10);
+    const thr = parseFloat($("inspect-gumbel-threshold").value);
+    return {
+      key: $("inspect-gumbel-key").value || "",
+      window: Number.isInteger(win) && win >= 1 ? win : 4,
+      threshold: thr > 0 && thr < 1 ? thr : 1e-6,
+    };
+  }
   function inspectCtx(signal) {
     const o = textOptions();
     return {
       layerAOptions: { aggressive: o.aggressiveHomoglyphs, stripEmojiGlue: o.stripEmojiGlue },
       stat: Object.assign({}, insp.stat, { keyProfile: $("inspect-key").value || "a" }),
+      gumbel: gumbelSettings(),
       server, signal,
     };
   }
@@ -413,6 +426,9 @@
       schema: "unmark-inspector/1", generated_at: new Date().toISOString(), page: location.origin + location.pathname,
       input: input.kind === "text" ? { kind: "text", length: input.text.length } : { kind: "file", name: input.name, bytes: input.u8.length },
       key_profile: $("inspect-key").value || "a",
+      // Settings only, never the key itself: the report is meant to be pasted
+      // into a bug thread.
+      gumbel: (() => { const g = gumbelSettings(); return { window: g.window, threshold: g.threshold, key_supplied: !!g.key }; })(),
       sidecar: insp.stat.enabled ? { enabled: true, model: insp.stat.model, detectors: insp.stat.detectors } : { enabled: false },
       results: res.map(strip), summary: Detectors.summarize(res),
     };
