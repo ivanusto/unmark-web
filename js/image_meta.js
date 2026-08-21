@@ -264,7 +264,7 @@
       const length = be32(u8, pos);
       const type = latin1(u8.subarray(pos + 4, pos + 8));
       const start = pos + 8, end = start + length;
-      if (end + 4 > u8.length) { yield { type, truncated: true }; return; }
+      if (end + 4 > u8.length) { yield { type, truncated: true, offset: pos }; return; }
       yield { type, payload: u8.subarray(start, end), raw: u8.subarray(pos, end + 4) };
       if (type === "IEND") return;
       pos = end + 4;
@@ -347,7 +347,10 @@
     const findings = []; let hasC2pa = false, hasAi = false;
     if (detectFormat(u8) !== "png") return { hasC2pa: false, hasAi: false, findings: ["not a PNG"] };
     for (const c of pngChunks(u8)) {
-      if (c.truncated) { findings.push(`truncated chunk ${c.type}`); break; }
+      // Upstream renders the chunk type with Python's repr() here, so the
+      // literal b'...' wrapper is part of the finding string the parity
+      // suite compares. Cosmetic upstream, load-bearing for us.
+      if (c.truncated) { findings.push(`truncated chunk b'${c.type}'`); break; }
       if (c.type === "caBX" || c.type === "juMB" || c.type === "jumb" || c.type.startsWith("c2")) {
         hasC2pa = true; findings.push(`PNG chunk ${c.type} (possible C2PA container)`);
       }
@@ -377,7 +380,16 @@
     if (detectFormat(u8) !== "png") throw new Error("not PNG");
     const actions = []; const out = [new Uint8Array(PNG_SIG)];
     for (const c of pngChunks(u8)) {
-      if (c.truncated) break;
+      if (c.truncated) {
+        // A truncated chunk (an interrupted download): copy the remainder
+        // verbatim instead of dropping it. Dropping turned a recoverable image
+        // into an unopenable husk while reporting "already clean" (upstream
+        // #170). Recorded as an action so the run is never mistaken for an
+        // ordinary no-op clean.
+        out.push(u8.subarray(c.offset));
+        actions.push(`kept ${u8.length - c.offset} bytes of truncated chunk ${c.type} tail (file truncated)`);
+        break;
+      }
       let drop = false;
       if (c.type === "eXIf" || c.type === "caBX" || c.type.startsWith("c2")) {
         drop = true; actions.push(`drop chunk ${c.type}`);
@@ -529,7 +541,10 @@
   // ------------------------------------------------------- AVIF / HEIC (ISOBMFF)
   const XMP_UUID = [0xbe, 0x7a, 0xcf, 0xcb, 0x97, 0xa9, 0x42, 0xe8, 0x9c, 0x71, 0x99, 0x94, 0x91, 0xe3, 0xaf, 0xac];
 
-  /** Parse top-level or container boxes -> [{fourcc, payload, size, headerSize}]. */
+  /* Parse top-level or container boxes. Returns { boxes, scannedEnd }, where
+   * scannedEnd is the offset the walk stopped at: the start of the first box
+   * that could not be parsed (one whose declared size overruns the data, or a
+   * run of fewer than 8 trailing bytes), or `end` when everything parsed. */
   function parseIsobmffBoxes(u8, start = 0, end = null) {
     if (end === null) end = u8.length;
     const boxes = [];
@@ -549,7 +564,7 @@
       boxes.push({ fourcc, payload: u8.subarray(pos + headerSize, pos + size), size, headerSize });
       pos += size;
     }
-    return boxes;
+    return { boxes, scannedEnd: pos };
   }
 
   const isC2paBox = (fourcc) => fourcc === "jumb" || fourcc === "c2pa" || fourcc.toLowerCase().startsWith("c2");
@@ -559,8 +574,18 @@
     const F = fmt.toUpperCase();
     const findings = [];
     let hasC2pa = false, hasAi = false;
-    const boxes = parseIsobmffBoxes(u8);
-    if (!boxes.length) return { hasC2pa: false, hasAi: false, findings: [`not a valid ${F} (no ISOBMFF boxes found)`] };
+    const { boxes } = parseIsobmffBoxes(u8);
+    if (!boxes.length) {
+      // Box parsing failed (typically the first box's size overruns a truncated
+      // download), which is exactly when the whole-file byte scan is most
+      // useful. Every sibling inspector still runs its equivalent after a
+      // truncation, so run it here too and report the parse failure alongside
+      // whatever it found (upstream #167).
+      const whole = containsAny(u8, C2PA_MARKERS);
+      if (whole.length) { hasC2pa = true; findings.push(`byte-scan C2PA markers: ${whole.slice(0, 6).join(", ")}`); }
+      findings.push(`not a valid ${F} (no ISOBMFF boxes found)`);
+      return { hasC2pa, hasAi: hasAi || hasC2pa, findings };
+    }
 
     const strong = (hits, set) => hits.some((h) => set.has(h.toLowerCase()));
 
@@ -583,7 +608,7 @@
           }
         }
       } else if (fourcc === "meta") {
-        for (const sub of parseIsobmffBoxes(payload, 4)) {
+        for (const sub of parseIsobmffBoxes(payload, 4).boxes) {
           const sName = sub.fourcc;
           if (isC2paBox(sName)) {
             hasC2pa = true;
@@ -615,49 +640,92 @@
     return { hasC2pa, hasAi: hasAi || hasC2pa, findings };
   }
 
-  const isobmffBox = (fourcc, payload) => concat([new Uint8Array(packBe32(payload.length + 8)), enc.encode(fourcc), payload]);
+  /* Serialize an ISOBMFF box, preserving the width of its original header so a
+   * 64-bit box stays 64-bit and every later absolute offset keeps its meaning. */
+  function buildIsobmffBox(fourcc, payload, headerSize = 8) {
+    const size = payload.length + headerSize;
+    const head = headerSize === 16
+      ? packBe32(1).concat([...enc.encode(fourcc)], packU64(size, false))
+      : packBe32(size).concat([...enc.encode(fourcc)]);
+    return concat([new Uint8Array(head), payload]);
+  }
+
+  /* An equal-size `free` box to put where a dropped box used to be. Rewriting in
+   * place instead of closing the gap is what keeps absolute media offsets valid
+   * (upstream #183); the cleaned file therefore keeps its original length. */
+  const isobmffFreeBox = (size, headerSize = 8) =>
+    buildIsobmffBox("free", new Uint8Array(size - headerSize), headerSize);
 
   function stripIsobmff(u8, fmt, { stripAllMetadata = true } = {}) {
     const F = fmt.toUpperCase();
-    const boxes = parseIsobmffBoxes(u8);
+    const { boxes, scannedEnd } = parseIsobmffBoxes(u8);
     if (!boxes.length) throw new Error(`not a valid ${F} (no ISOBMFF boxes)`);
+    // scannedEnd is where the box walk stopped: the parser halts at the first
+    // box whose declared size overruns the data (a truncated download). The
+    // rebuild below used to emit only the boxes that parsed, dropping a
+    // truncated mdat (the actual coded image) while reporting "already clean"
+    // (upstream #170); the tail is appended verbatim afterwards instead.
     const actions = [];
     const out = [];
 
-    for (const { fourcc, payload } of boxes) {
-      if (isC2paBox(fourcc)) { actions.push(`drop top-level ${fourcc} box (C2PA/JUMBF)`); continue; }
+    for (const { fourcc, payload, size, headerSize } of boxes) {
+      if (isC2paBox(fourcc)) {
+        actions.push(`drop top-level ${fourcc} box (C2PA/JUMBF)`);
+        out.push(isobmffFreeBox(size, headerSize)); continue;
+      }
 
       if (fourcc === "uuid") {
-        if (isXmpUuid(payload)) { actions.push(`drop top-level ${fourcc} box (XMP metadata)`); continue; }
+        if (isXmpUuid(payload)) {
+          actions.push(`drop top-level ${fourcc} box (XMP metadata)`);
+          out.push(isobmffFreeBox(size, headerSize)); continue;
+        }
         if (stripAllMetadata || containsAny(payload, ALL_HINTS).length) {
-          actions.push(`drop top-level ${fourcc} box (UUID metadata)`); continue;
+          actions.push(`drop top-level ${fourcc} box (UUID metadata)`);
+          out.push(isobmffFreeBox(size, headerSize)); continue;
         }
       }
 
       if (fourcc === "meta") {
         const verflags = payload.length >= 4 ? payload.subarray(0, 4) : new Uint8Array(4);
         const cleanSub = [];
-        for (const sub of parseIsobmffBoxes(payload, 4)) {
+        for (const sub of parseIsobmffBoxes(payload, 4).boxes) {
           const sName = sub.fourcc;
-          if (isC2paBox(sName)) { actions.push(`drop meta sub-box ${sName} (C2PA/JUMBF)`); continue; }
+          if (isC2paBox(sName)) {
+            actions.push(`drop meta sub-box ${sName} (C2PA/JUMBF)`);
+            cleanSub.push(isobmffFreeBox(sub.size, sub.headerSize)); continue;
+          }
           if (sName === "uuid") {
-            if (isXmpUuid(sub.payload)) { actions.push(`drop meta sub-box ${sName} (XMP metadata)`); continue; }
+            if (isXmpUuid(sub.payload)) {
+              actions.push(`drop meta sub-box ${sName} (XMP metadata)`);
+              cleanSub.push(isobmffFreeBox(sub.size, sub.headerSize)); continue;
+            }
             if (stripAllMetadata || containsAny(sub.payload, ALL_HINTS).length) {
-              actions.push(`drop meta sub-box ${sName} (UUID metadata)`); continue;
+              actions.push(`drop meta sub-box ${sName} (UUID metadata)`);
+              cleanSub.push(isobmffFreeBox(sub.size, sub.headerSize)); continue;
             }
           }
           if (sName === "xml " || sName === "bxml") {
             if (stripAllMetadata || containsAny(sub.payload, ALL_HINTS).length) {
-              actions.push(`drop meta sub-box ${sName} (XML metadata)`); continue;
+              actions.push(`drop meta sub-box ${sName} (XML metadata)`);
+              cleanSub.push(isobmffFreeBox(sub.size, sub.headerSize)); continue;
             }
           }
-          cleanSub.push(isobmffBox(sName, sub.payload));
+          cleanSub.push(buildIsobmffBox(sName, sub.payload, sub.headerSize));
         }
-        out.push(isobmffBox("meta", concat([verflags, concat(cleanSub)])));
+        out.push(buildIsobmffBox("meta", concat([verflags, concat(cleanSub)]), headerSize));
         continue;
       }
 
-      out.push(isobmffBox(fourcc, payload));
+      out.push(buildIsobmffBox(fourcc, payload, headerSize));
+    }
+
+    if (scannedEnd < u8.length) {
+      const tail = u8.subarray(scannedEnd);
+      out.push(tail);
+      // An 8-byte header whose box overruns the data is a truncated download
+      // worth reporting; fewer than 8 leftover bytes is merely trailing junk,
+      // kept verbatim without claiming the file was truncated (upstream #170).
+      if (tail.length >= 8) actions.push(`kept ${tail.length} bytes of truncated tail (file truncated)`);
     }
 
     if (!actions.length) actions.push(`no ${F} metadata boxes removed (already clean or none matched)`);

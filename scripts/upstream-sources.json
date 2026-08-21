@@ -6,7 +6,7 @@
       "id": "watermarks-remover/service/scripts/text_unicode.py",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/text_unicode.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/text_unicode.py",
-      "sha256": "cd21c5700184a6bb4a43089f546531a2692bf140413954ea9b93f4a67f1f3a5e",
+      "sha256": "ab0197b06263ad83a489032be69103e9a8725c72ddc3cf002a260c87b02647ac",
       "mirrors": [
         "js/layer_a.js",
         "tests/test_layer_a_parity.py"
@@ -16,11 +16,12 @@
       "id": "watermarks-remover/service/scripts/image_meta.py",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/image_meta.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/image_meta.py",
-      "sha256": "422dbbea5eff172b78a6f38ade753d11857d62ff4811b97084000062c5622e4a",
+      "sha256": "78e5a67db243a4eac2a97b97cea036faae448bdaa2d77c59182af2c972657794",
       "mirrors": [
         "js/image_meta.js",
         "tests/test_image_meta_parity.py"
-      ]
+      ],
+      "comment": "Deliberately partial: upstream #156 hardened the error handling around the external c2patool subprocess (a failed run is inconclusive, not 'no C2PA'). There is no c2patool and no run_optional_tools in a browser, so js/image_meta.js has nothing to mirror there. Everything else in this file is ported."
     },
     {
       "id": "watermarks-remover/service/scripts/score_stylometry.py",

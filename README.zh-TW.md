@@ -22,13 +22,22 @@
 
 | 輸入 | 瀏覽器引擎 | 伺服器引擎（`server.py`） |
 | --- | --- | --- |
-| 貼上的文字 / `.txt` | Layer A：零寬與 bidi 控制字元、變體選擇符、tag 字元、PUA、其他 `Cf`；空白同形字；可選的 NFKC／拉丁易混字元處理。與上游一致地保留具功能性的隱形字元（emoji 的 ZWJ/VS16、波斯文／印度系文字的 ZWNJ、旗幟 tag、蒙古文 FVS、高棉文母音、諺文填充字元、阿拉伯文 `Cf`），並提供「偏執模式」開關。 | 同左 |
+| 貼上的文字 / `.txt` | Layer A：零寬與 bidi 控制字元、變體選擇符、tag 字元、PUA、Unicode 非字元、保留的預設可忽略字元、其他 `Cf`；空白同形字；可選的 NFKC／拉丁易混字元處理。與上游一致地保留具功能性的隱形字元（emoji 的 ZWJ/VS16、波斯文／印度系文字的 ZWNJ、旗幟 tag、蒙古文 FVS、高棉文母音、諺文填充字元、阿拉伯文 `Cf`，以及緊鄰自身書寫系統的排版控制字元：埃及聖書體象限、Duployan 速記、音樂符號連桿），並提供「偏執模式」開關。 | 同左 |
 | `.md` `.html` `.svg` | 僅對文字內容套用 Layer A（中繼資料標籤／frontmatter 不動，UI 會標示） | 完整容器清理（frontmatter 鍵、`<meta generator>`、XMP……） |
 | PNG / JPEG / WebP / AVIF / HEIC | 移除 `tEXt/zTXt/iTXt/eXIf/caBX/c2*` 區塊、`APPn`（JFIF 除外）與 `COM` 區段、`EXIF/XMP/ICCP/C2PA` RIFF 區塊並修正 VP8X 旗標，以及 ISOBMFF 的 `jumb/c2pa/uuid`（XMP）盒與其 `meta` 子盒。像素不動（不經 canvas 重新編碼）。「保留非 AI 中繼資料」模式只移除帶有 AI／C2PA 跡象的區塊。 | 同左，若有安裝則額外提供像素域後端 |
 | BMP / GIF / TIFF | BMP：移除像素資料之後的尾端位元組（BMP 中繼資料唯一可能存在的位置）並改寫檔案大小欄位。GIF：移除註解與 XMP／未知的 application extension，保留 NETSCAPE2.0 循環與 ICC。TIFF（classic 與 BigTIFF）：走訪 IFD 鏈並移除 XMP／EXIF／GPS／IPTC／Photoshop／MakerNote 標籤，逐一原地修補 IFD，讓 strip 與 tile 的 offset 保持有效。 | 同左 |
-| PDF / DOCX / ODT / EPUB | ，（需要伺服器） | 支援 |
+| PDF / DOCX / ODT / EPUB | 不支援（需要伺服器） | 支援 |
 | 統計式文字浮水印（Kirchenbauer／KGW、SynthID-Text） | **只偵測**，透過選用的本機 [sidecar](sidecar/README.md)（需要模型與生成端的 key）；不移除，改寫請見上游 Layer B | 伺服器宣告文字偵測器時走上游 `/detect`（MarkLLM harness） |
 | 像素式浮水印（SynthID image 等） | **不支援** | 僅能透過上游後端 |
+
+容器處理有兩個常讓人意外的結果：
+
+* **清理後的 AVIF／HEIC 檔案大小不變。** 被移除的 ISOBMFF 盒是就地覆寫成等長的 `free` 盒，
+  而不是抽掉。抽掉會讓檔案後段所有絕對 offset 位移，圖就壞了。中繼資料確實已經消失：
+  `free` 盒的內容是全零。
+* **被截斷的檔案會保留截斷的尾段。** 下載中斷時，最後一個 PNG chunk 或 ISOBMFF 盒宣告的
+  長度會超出檔案實際內容。那段尾巴會原樣保留並列進動作清單，避免把一個還救得回來的圖
+  變成打不開的空殼，還宣稱它本來就是乾淨的。
 
 ## 連接伺服器
 

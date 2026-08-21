@@ -86,6 +86,27 @@ def make_isobmff(brand: bytes, boxes: list[tuple[bytes, bytes]]) -> bytes:
     return ftyp + b"".join(iso_box(f, p) for f, p in boxes) + iso_box(b"mdat", b"\x00" * 8)
 
 
+def truncate_isobmff(data: bytes, cut: int) -> bytes:
+    """Drop the last `cut` bytes, so the final box overruns the buffer.
+
+    Upstream #170: the rebuild used to emit only the boxes that parsed, which
+    threw away a half-written mdat (the coded image) while reporting the file
+    as already clean.
+    """
+    return data[:-cut]
+
+
+def make_truncated_png(extra: list[tuple[bytes, bytes]], tail: bytes) -> bytes:
+    """A PNG cut mid-IDAT, with no IEND: the last chunk header declares more
+    payload than the file actually holds. Built without make_png because both
+    engines stop walking at IEND, so a tail appended after one is never seen.
+    """
+    body = image_meta.PNG_SIG + png_chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
+    for t, payload in extra:
+        body += png_chunk(t, payload)
+    return body + struct.pack(">I", 4096) + b"IDAT" + tail
+
+
 
 # --- BMP / GIF / TIFF builders, mirroring upstream tests/test_image_formats_bmp_gif_tiff.py ---
 
@@ -255,6 +276,12 @@ SAMPLES = {
         ])),
     ]),
     "heic_c2pa_box": make_isobmff(b"heix", [(b"c2pa", JUMBF), (b"meta", iso_meta([(b"hdlr", b"\x00" * 12 + b"pict")]))]),
+    # Upstream #182: an interrupted download leaves a box (or a PNG chunk)
+    # whose declared length overruns the file. The tail has to survive.
+    "avif_truncated_tail": truncate_isobmff(
+        make_isobmff(b"avif", [(b"uuid", XMP_UUID + XMP_AI), (b"meta", iso_meta([(b"hdlr", b"\x00" * 12 + b"pict")]))]), 4),
+    "avif_truncated_junk": make_isobmff(b"avif", [(b"c2pa", JUMBF)]) + b"\x00\x01\x02",
+    "png_truncated_tail": make_truncated_png([(b"tEXt", b"Software\x00ChatGPT")], b"\x01\x02\x03\x04\x05\x06"),
     "bmp_clean": make_bmp(),
     "bmp_trailing_ai": make_bmp(b"digitalSourceType=trainedAlgorithmicMedia"),
     "bmp_trailing_plain": make_bmp(b"harmless scanner note"),
@@ -344,6 +371,39 @@ def test_idempotent_and_valid_structure() -> None:
         assert fmt == image_meta.detect_format(data)
         if fmt == "webp":
             assert struct.unpack("<I", once[4:8])[0] + 8 == len(once)
+
+
+def test_isobmff_unparsable_still_byte_scans() -> None:
+    """Upstream #176: when no box parses, the whole-file C2PA scan still runs.
+
+    strip_isobmff refuses this input on both sides, so it cannot live in SAMPLES
+    (which every clean-parity case must survive); inspect is the interesting half.
+    """
+    head = iso_box(b"ftyp", b"avif\x00\x00\x00\x00avifmif1")
+    # Overstate the very first box's size so the walk stops before box one.
+    broken = struct.pack(">I", 1 << 20) + head[4:] + JUMBF
+    assert image_meta.detect_format(broken) == "avif"
+    py = image_meta.inspect_isobmff(broken, "avif")
+    js = _js("inspect", broken, {})
+    assert (js["has_c2pa"], js["has_ai_metadata"], js["findings"]) == py
+    assert py[0] is True and any("byte-scan" in f for f in py[2])
+
+
+def test_isobmff_free_box_preserves_offsets() -> None:
+    """Upstream #183: a dropped box becomes an equal-size `free` box.
+
+    That is what keeps every absolute offset later in the file valid, so the
+    cleaned image is the same length and mdat has not moved.
+    """
+    for name in ("avif_xmp_c2pa", "heic_c2pa_box", "heic_meta", "avif_uuid_plain"):
+        src = SAMPLES[name]
+        out = base64.b64decode(_js("clean", src, {})["data"])
+        assert len(out) == len(src), name
+        assert out.index(b"mdat") == src.index(b"mdat"), name
+        assert b"free" in out, name
+        for secret in (XMP_AI, JUMBF, b"harmless camera note"):
+            if secret in src:
+                assert secret not in out, (name, secret)
 
 
 def test_bmp_and_tiff_structural_invariants() -> None:
