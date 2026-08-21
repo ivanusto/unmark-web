@@ -42,7 +42,7 @@
    python3 serve_local.py --upstream http://127.0.0.1:8765 [--api-key "$WATERMARKS_SERVER_API_KEY"]
    # 開啟 http://127.0.0.1:8766/  → UI 會自動選用 /api
    ```
-2. **任何 reverse proxy**：只要它能服務這個目錄，並把某個路徑轉發到 `server.py`；接著在 ⚙️ *伺服器連線* 中填入該路徑（例如 `/api`）或 URL。
+2. **任何 reverse proxy**：只要它能服務這個目錄，並把某個路徑轉發到 `server.py`；接著在 ⚙ *伺服器連線* 中填入該路徑（例如 `/api`）或 URL。
 3. **直接填 URL**（例如從 GitHub Pages 版本使用）—— 只有在伺服器前方有東西以 CORS 允許本頁的來源時才會成功。上游刻意在 `server.py` 中**不**提供 CORS 支援（該 API 的定位是伺服器對伺服器；參見 [issue #77](https://github.com/guillaumemeyer/watermarks-remover/issues/77) 與 [PR #78](https://github.com/guillaumemeyer/watermarks-remover/pull/78)），因此這代表你得自行在它前面架 reverse proxy。請**不要**在該 API 上掛萬用字元的 CORS 標頭。
 
 API 金鑰只會以 `Authorization: Bearer …` 送往你所設定的 URL，而且只有在勾選 *記住於此瀏覽器* 時才會存入 `localStorage`。
