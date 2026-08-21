@@ -52,7 +52,7 @@
    # 開啟 http://127.0.0.1:8766/  → UI 會自動選用 /api
    ```
 2. **任何 reverse proxy**：只要它能服務這個目錄，並把某個路徑轉發到 `server.py`；接著在 ⚙️ *伺服器連線* 中填入該路徑（例如 `/api`）或 URL。
-3. **直接填 URL**（例如從 GitHub Pages 版本使用）， 只有在伺服器前方有東西以 CORS 允許本頁的來源時才會成功。上游刻意在 `server.py` 中**不**提供 CORS 支援（該 API 的定位是伺服器對伺服器；參見 [issue #77](https://github.com/guillaumemeyer/watermarks-remover/issues/77) 與 [PR #78](https://github.com/guillaumemeyer/watermarks-remover/pull/78)），因此這代表你得自行在它前面架 reverse proxy。請**不要**在該 API 上掛萬用字元的 CORS 標頭。
+3. **直接填 URL**（例如從 GitHub Pages 版本使用）：只有在伺服器前方有東西以 CORS 允許本頁的來源時才會成功。上游刻意在 `server.py` 中**不**提供 CORS 支援（該 API 的定位是伺服器對伺服器；參見 [issue #77](https://github.com/guillaumemeyer/watermarks-remover/issues/77) 與 [PR #78](https://github.com/guillaumemeyer/watermarks-remover/pull/78)），因此這代表你得自行在它前面架 reverse proxy。請**不要**在該 API 上掛萬用字元的 CORS 標頭。
 
 API 金鑰只會以 `Authorization: Bearer …` 送往你所設定的 URL，而且只有在勾選 *記住於此瀏覽器* 時才會存入 `localStorage`。
 
@@ -153,7 +153,7 @@ WATERMARKS_UPSTREAM_DIR=../watermarks-remover .venv/bin/pytest -q
 node scripts/check-upstream.mjs                                                          # 檢查上游雜湊漂移
 ```
 
-本專案沒有 `package.json`，執行期與測試都不需要 npm，因此上游檢查直接用 `node` 執行，與 [workflow](.github/workflows/upstream-check.yml) 的呼叫方式完全一致。退出碼：`0` 表示雜湊仍相符、`1` 表示偵測到漂移、`2` 表示根本無法檢查（網路、速率限制、manifest 有問題）， 抓不到來源絕不會被當成漂移回報。
+本專案沒有 `package.json`，執行期與測試都不需要 npm，因此上游檢查直接用 `node` 執行，與 [workflow](.github/workflows/upstream-check.yml) 的呼叫方式完全一致。退出碼：`0` 表示雜湊仍相符、`1` 表示偵測到漂移、`2` 表示根本無法檢查（網路、速率限制、manifest 有問題）。抓不到來源絕不會被當成漂移回報。
 
 - `js/layer_a.js`，`text_unicode.py` 的移植（`clean`、`inspect`、`decide`）
 - `js/image_meta.js`，`image_meta.py` 的移植（PNG/JPEG/WebP/AVIF/HEIC/BMP/GIF/TIFF 檢查與清除）
