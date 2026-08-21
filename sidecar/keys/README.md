@@ -5,7 +5,7 @@
 - https://raw.githubusercontent.com/xlr8harder/synthid/main/reference/experiment-keys/key-a.json
 - https://raw.githubusercontent.com/xlr8harder/synthid/main/reference/experiment-keys/key-b.json
 
-Project: https://github.com/xlr8harder/synthid — MIT License, Copyright (c) 2026 xlr8harder.
+Project: https://github.com/xlr8harder/synthid (MIT License, Copyright (c) 2026 xlr8harder).
 
 They are the SynthID-Text watermark configurations (30 integer keys, `ngram_len` 5,
 sampling table seed 0 / size 65536, context history 1024) that the published
