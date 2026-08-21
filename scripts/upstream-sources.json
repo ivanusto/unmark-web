@@ -1,5 +1,5 @@
 {
-  "note": "The Python modules js/layer_a.js, js/image_meta.js and js/stylometry.js were ported from. scripts/check-upstream.mjs compares the live content against these hashes. The parity suite proves the ported behaviour still matches for the cases it covers; this catches the rest \u2014 new options, new formats, anything the fixtures do not exercise. When one moves, re-port it and update `sha256` in the same commit.",
+  "note": "The Python modules js/layer_a.js, js/image_meta.js, js/stylometry.js and js/gumbel.js were ported from. scripts/check-upstream.mjs compares the live content against these hashes. The parity suite proves the ported behaviour still matches for the cases it covers; this catches the rest: new options, new formats, anything the fixtures do not exercise. When one moves, re-port it and update `sha256` in the same commit.",
   "followUp": "If the parity suite is still green, the change is probably additive \u2014 a new format or option the fixtures do not reach. Add fixtures covering it, or the gap stays invisible the next time too.",
   "sources": [
     {
@@ -31,6 +31,16 @@
       "mirrors": [
         "js/stylometry.js",
         "tests/test_stylometry_parity.py"
+      ]
+    },
+    {
+      "id": "watermarks-remover/service/scripts/detect_gumbel.py",
+      "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/detect_gumbel.py",
+      "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/detect_gumbel.py",
+      "sha256": "f908272084cd6783a2daa015d51cd1348f56e4bb45fe69168bd85f57b62cd4c1",
+      "mirrors": [
+        "js/gumbel.js",
+        "tests/test_gumbel_parity.py"
       ]
     }
   ]

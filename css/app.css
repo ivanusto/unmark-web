@@ -746,3 +746,22 @@ td.inspect-score { margin-top: 0; }
 .inspect-overall-lines p + p { margin-top: 4px; }
 #inspect-overall { margin-top: 16px; }
 #stat-demo-box { margin-top: 18px; }
+
+/* Keyed-Gumbel key entry. A <details> because the key is an advanced control
+   that most visitors never have, but it stays available on the hosted page:
+   unlike the sidecar detectors, this one needs no local service. */
+.gumbel-panel {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  padding: 10px 14px;
+}
+.gumbel-panel summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.gumbel-panel .footnote { margin-bottom: 0; }
+.gumbel-panel input[type="password"] { flex: 1 1 220px; }
+.gumbel-panel input[type="text"] { flex: 0 0 110px; min-width: 90px; }
