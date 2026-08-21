@@ -8,8 +8,8 @@ Independent, browser-first web client for **[guillaumemeyer/watermarks-remover](
 
 - **Runs entirely in the browser** for text (Layer A: invisible Unicode / homoglyph spaces) and PNG / JPEG / WebP / AVIF / HEIC / BMP / GIF / TIFF metadata (C2PA, EXIF, XMP, text chunks). No uploads, no analytics, no web fonts, no third-party requests.
 - **Optionally drives the upstream Python service** (`server.py`) for everything else — PDF, DOCX, ODT, EPUB, full HTML/SVG/Markdown container cleaning, and pixel-domain backends.
-- The JavaScript engines are **line-for-line ports of upstream's `text_unicode.py`, `image_meta.py` and `score_stylometry.py`**, and a parity test suite asserts identical output (same characters kept/stripped, same bytes out of the image parsers, same stylometry numbers).
-- A **Watermark Inspector** tab runs every detector on one input and reports each separately — character layer, metadata layer, statistical layer — and can re-run them after a Layer A clean to show what the cleaner did *not* touch. Statistical detectors (Kirchenbauer, SynthID-Text) run through an optional local sidecar.
+- The JavaScript engines are **line-for-line ports of upstream's `text_unicode.py`, `image_meta.py`, `score_stylometry.py` and `detect_gumbel.py`**, and a parity test suite asserts identical output (same characters kept/stripped, same bytes out of the image parsers, same stylometry numbers, same keyed-Gumbel p-value).
+- A **Watermark Inspector** tab runs every detector on one input and reports each separately — character layer, metadata layer, statistical layer — and can re-run them after a Layer A clean to show what the cleaner did *not* touch. Keyed-Gumbel (EXP) detection runs in the page itself; the other statistical detectors (Kirchenbauer, SynthID-Text) run through an optional local sidecar.
 
 Live demo: [https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/unmark-web/) · Local: open `index.html` or run `python3 serve_local.py`.
 
@@ -160,15 +160,38 @@ There is no `package.json` here — nothing at runtime or in the test suite need
 - `js/layer_a.js` — port of `text_unicode.py` (`clean`, `inspect`, `decide`)
 - `js/image_meta.js` — port of `image_meta.py` (PNG/JPEG/WebP/AVIF/HEIC/BMP/GIF/TIFF inspect + strip)
 - `js/stylometry.js` — port of `score_stylometry.py` (burstiness / MATTR / AI-phrase density; heuristic, not a watermark detector)
+- `js/gumbel.js`: port of `detect_gumbel.py` (keyed-Gumbel / EXP same-key replay, with its own synchronous SHA-256 and HMAC so it needs neither `crypto.subtle` nor a secure context)
 - `js/detectors.js` — the Inspector's detector registry: one result contract for the character, metadata and statistical layers, plus `summarize()` / `compare()` for the Overall box and the before/after view
 - `js/api.js` — client for `/health /capabilities /inspect /clean /detect`, plus the optional `/llm-config` + `/llm` rewrite calls and `/stat-config` + `/stat` sidecar calls
 - `js/i18n.js`, `js/app.js`, `css/app.css`, `index.html` — UI (English / 繁體中文 / 简体中文, light/dark, keyboard-accessible). The locale is picked from `navigator.languages` and remembered in `localStorage`; adding a language is one entry in `LANGS` plus one dictionary in `js/i18n.js`.
-- `tests/test_layer_a_parity.py`, `tests/test_image_meta_parity.py`, `tests/test_stylometry_parity.py` — cross-engine parity vs the upstream checkout (skipped if `node` or the checkout is missing)
+- `tests/test_layer_a_parity.py`, `tests/test_image_meta_parity.py`, `tests/test_stylometry_parity.py`, `tests/test_gumbel_parity.py` — cross-engine parity vs the upstream checkout (skipped if `node` or the checkout is missing)
+- `tests/test_i18n_keys.py`: every locale carries every key, and every `data-i18n` attribute in `index.html` resolves. A gap there is invisible at runtime, because `t()` falls back silently.
 - `serve_local.py` — same-origin static + `/api` proxy, the optional `/llm` rewrite proxy and the optional `/stat` sidecar proxy
 - `sidecar/` — the statistical-detector sidecar (its own `requirements.txt`; never part of the page)
 - `scripts/check-upstream.mjs` — run it with `node scripts/check-upstream.mjs`; hashes the upstream Python modules against `scripts/upstream-sources.json`; `.github/workflows/upstream-check.yml` runs it and the parity suite daily and files an issue when either signal fires. Parity catches behaviour that changed; the hashes catch changes the fixtures do not reach, such as a newly supported format.
 
 No build step, no dependencies at runtime. CSP: `default-src 'self'; connect-src *` (the latter so you can point at your own server).
+
+## Changelog
+
+Full notes on each [release](https://github.com/ivanusto/unmark-web/releases).
+
+### [v0.3.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.3.0)
+
+- **Keyed-Gumbel (EXP) detection in the browser** (`js/gumbel.js`, port of upstream's `detect_gumbel.py`). The first statistical detector that needs no sidecar, no model weights and no network, so it reaches a verdict on the hosted page. It is a same-key replay: `clean` means *not this key*, never *no watermark*.
+- **Layer A hardening** (upstream #133): `U+180F`, `U+3164` and `U+FFA0` are kept next to their own script and stripped when they float; Unicode noncharacters and reserved default-ignorables are now strip-class; visible-layout format controls (Egyptian quadrat, Duployan, musical beaming) are kept next to their own script.
+- **Image containers** (upstream #176, #182, #183): a dropped ISOBMFF box is overwritten with an equal-size `free` box, so a cleaned AVIF or HEIC keeps its length and later media offsets stay valid; a truncated PNG chunk or ISOBMFF box keeps its tail instead of being dropped while the run claims the file was already clean.
+- Parity anchors moved to `text_unicode.py` `ab0197b06263`, `image_meta.py` `78e5a67db243`, and the new `detect_gumbel.py` `f908272084cd`.
+
+### [v0.2.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.2.0)
+
+- **Watermark Inspector**: a third tab that runs every detector on one input and reports each separately across the character, metadata and statistical layers, through one result contract (`js/detectors.js`).
+- **Stylometry** (`js/stylometry.js`, port of `score_stylometry.py`), capped at *uncertain* because a heuristic is not a watermark detector.
+- **Statistical sidecar** (`sidecar/unmark_stat.py`): Kirchenbauer/KGW and SynthID-Text detection with the reference `transformers` detectors, proxied same-origin by `serve_local.py --stat-upstream`. Local only, off by default.
+
+### [v0.1.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.1.0)
+
+First release. Layer A text cleaning and image container cleaning in the browser, three locales, an optional local AI rewrite behind `serve_local.py`, and the parity suite that pins both engines to upstream.
 
 ## Attribution & license
 
