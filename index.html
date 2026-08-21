@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="dark light" />
-  <title data-i18n="docTitle">Unmark — invisible marks &amp; metadata remover</title>
+  <title data-i18n="docTitle">Unmark: invisible marks &amp; metadata remover</title>
   <meta name="description" data-i18n-content="docDesc" content="Unmark is a browser-first web client: strip invisible Unicode marks and C2PA/EXIF/XMP metadata locally, or drive the watermarks-remover Python service." />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src *; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
@@ -14,7 +14,7 @@
   <a class="sr-only" href="#main" data-i18n="skipLink">Skip to content</a>
   <div class="app-container">
     <header>
-      <a href="#" class="brand" aria-label="Unmark — invisible marks &amp; metadata remover">
+      <a href="#" class="brand" aria-label="Unmark: invisible marks &amp; metadata remover">
         <div class="brand-icon" aria-hidden="true">🛡️</div>
         <div>
           <div class="brand-title" data-i18n="appTitle">Unmark</div>
@@ -35,7 +35,7 @@
       <div class="privacy-banner" role="status">
         <div class="privacy-text">
           <span aria-hidden="true">🔒</span>
-          <span id="engine-desc" data-i18n="engineDescBrowser">Your files never leave this device. Everything is processed inside your browser — nothing is uploaded.</span>
+          <span id="engine-desc" data-i18n="engineDescBrowser">Your files never leave this device. Everything is processed inside your browser, and nothing is uploaded.</span>
         </div>
         <div id="engine-status" class="engine-status-badge">
           <span class="status-dot" aria-hidden="true"></span>
@@ -123,7 +123,7 @@
           </div>
 
           <!-- Optional AI rewrite. Hidden unless serve_local.py reports a configured
-               local endpoint (GET /llm-config) — on GitHub Pages it never appears. -->
+               local endpoint (GET /llm-config); on GitHub Pages it never appears. -->
           <div class="report-box rewrite-box" id="rewrite-box" hidden>
             <div class="report-title"><span aria-hidden="true">✨</span><span id="lbl-rewrite-header" data-i18n="rewriteTitle">AI rewrite</span></div>
             <p class="footnote" data-i18n="rewriteNote">Sends the cleaned text to the local endpoint you configured. Cleaning itself never leaves this device.</p>
@@ -171,7 +171,7 @@
            on the hosted page they report "unavailable" by design. -->
       <div class="tab-pane" id="tab-inspect" role="tabpanel" aria-labelledby="tab-btn-inspect" hidden>
         <div class="main-card">
-          <p class="inspect-intro" data-i18n="inspectIntro">Runs every detector on the same input and reports each one separately — character-level marks, file metadata and statistical (token-sampling) watermarks are different worlds, and cleaning one says nothing about the others.</p>
+          <p class="inspect-intro" data-i18n="inspectIntro">Runs every detector on the same input and reports each one separately. Character-level marks, file metadata and statistical (token-sampling) watermarks are different worlds, and cleaning one says nothing about the others.</p>
           <div class="text-box-container inspect-input">
             <div class="box-header">
               <label for="inspect-text" data-i18n="inspectInputLabel">Text to inspect</label>

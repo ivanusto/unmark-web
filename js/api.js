@@ -94,7 +94,7 @@
       }
     } catch (e) {
       if (e.name === "AbortError") throw new ApiError(timedOut ? "request timed out" : "cancelled", 0);
-      throw new ApiError("network/CORS error — is the server running and allowing this origin?", 0);
+      throw new ApiError("network/CORS error: is the server running and allowing this origin?", 0);
     } finally {
       clearTimeout(t);
       if (signal) signal.removeEventListener("abort", abort);
