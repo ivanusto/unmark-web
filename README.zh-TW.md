@@ -8,8 +8,8 @@
 
 - **完全在瀏覽器中執行**：文字（Layer A：隱形 Unicode／同形字空白）與 PNG／JPEG／WebP／AVIF／HEIC／BMP／GIF／TIFF 中繼資料（C2PA、EXIF、XMP、文字區塊）皆是。不上傳、不做分析追蹤、不載入網頁字型、不發送任何第三方請求。
 - **可選擇驅動上游的 Python 服務**（`server.py`）處理其餘格式，PDF、DOCX、ODT、EPUB、完整的 HTML／SVG／Markdown 容器清理，以及像素域後端。
-- JavaScript 引擎是上游 **`text_unicode.py`、`image_meta.py` 與 `score_stylometry.py` 的逐行移植**，並有一套 parity 測試驗證輸出完全一致（保留／移除的字元相同，圖片解析器輸出的位元組相同，文風統計的數字也相同）。
-- **「檢測器」分頁**是一個偵測實驗室：對同一份輸入跑過每一個偵測器並分別回報，字元層、中繼資料層、統計層，還能在 Layer A 清理後重新檢測，讓你看清楚清理器*沒有*動到哪一層。統計型偵測器（Kirchenbauer、SynthID-Text）透過選用的本機 sidecar 執行。
+- JavaScript 引擎是上游 **`text_unicode.py`、`image_meta.py`、`score_stylometry.py` 與 `detect_gumbel.py` 的逐行移植**，並有一套 parity 測試驗證輸出完全一致（保留／移除的字元相同，圖片解析器輸出的位元組相同，文風統計的數字相同，keyed-Gumbel 的 p 值也相同）。
+- **「檢測器」分頁**是一個偵測實驗室：對同一份輸入跑過每一個偵測器並分別回報，字元層、中繼資料層、統計層，還能在 Layer A 清理後重新檢測，讓你看清楚清理器*沒有*動到哪一層。Keyed-Gumbel（EXP）偵測直接在頁面裡跑；其餘統計型偵測器（Kirchenbauer、SynthID-Text）透過選用的本機 sidecar 執行。
 
 線上示範：[https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/unmark-web/) · 本機執行：直接開啟 `index.html`，或執行 `python3 serve_local.py`。
 
@@ -158,15 +158,38 @@ node scripts/check-upstream.mjs                                                 
 - `js/layer_a.js`，`text_unicode.py` 的移植（`clean`、`inspect`、`decide`）
 - `js/image_meta.js`，`image_meta.py` 的移植（PNG/JPEG/WebP/AVIF/HEIC/BMP/GIF/TIFF 檢查與清除）
 - `js/stylometry.js`，`score_stylometry.py` 的移植（burstiness／MATTR／AI 片語密度；啟發式，不是浮水印偵測器）
+- `js/gumbel.js`，`detect_gumbel.py` 的移植（keyed-Gumbel／EXP 同金鑰重放，自帶同步版 SHA-256 與 HMAC，因此不需要 `crypto.subtle`，也不需要 secure context）
 - `js/detectors.js`，檢測器的偵測器註冊表：字元、中繼資料、統計三層共用一種結果契約，加上給總結與前後對照用的 `summarize()`／`compare()`
 - `js/api.js`，`/health /capabilities /inspect /clean /detect` 的客戶端，以及選用的 `/llm-config`＋`/llm` 改寫呼叫與 `/stat-config`＋`/stat` sidecar 呼叫
 - `js/i18n.js`、`js/app.js`、`css/app.css`、`index.html`，UI（英文／繁體中文／簡體中文、淺色／深色、支援鍵盤操作）。語系依 `navigator.languages` 判斷並記在 `localStorage`；新增語言只需在 `js/i18n.js` 的 `LANGS` 加一列、再加一本字典。
-- `tests/test_layer_a_parity.py`、`tests/test_image_meta_parity.py`、`tests/test_stylometry_parity.py`，與上游 checkout 的跨引擎 parity 測試（缺少 `node` 或該 checkout 時會跳過）
+- `tests/test_layer_a_parity.py`、`tests/test_image_meta_parity.py`、`tests/test_stylometry_parity.py`、`tests/test_gumbel_parity.py`，與上游 checkout 的跨引擎 parity 測試（缺少 `node` 或該 checkout 時會跳過）
+- `tests/test_i18n_keys.py`，三個語系必須有相同的字串鍵，且 `index.html` 裡每個 `data-i18n` 都解得開。這種缺口在執行期看不出來，因為 `t()` 會靜靜 fallback。
 - `serve_local.py`，同源靜態伺服器 + `/api` 代理、選用的 `/llm` 改寫代理，以及選用的 `/stat` sidecar 代理
 - `sidecar/`，統計型偵測器 sidecar（有自己的 `requirements.txt`；永遠不是頁面的一部分）
 - `scripts/check-upstream.mjs`，以 `node scripts/check-upstream.mjs` 執行；以 `scripts/upstream-sources.json` 記錄的雜湊比對上游 Python 模組；`.github/workflows/upstream-check.yml` 每天執行它與 parity 測試，任一訊號觸發就開 issue。parity 抓行為改變，雜湊抓測試涵蓋不到的變動（例如上游新增了一種格式）。
 
 沒有建置步驟，執行期零相依。CSP：`default-src 'self'; connect-src *`（後者是為了讓你能指向自己的伺服器）。
+
+## 版本紀錄
+
+各版完整說明見 [releases](https://github.com/ivanusto/unmark-web/releases)。
+
+### [v0.3.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.3.0)
+
+- **瀏覽器端的 Keyed-Gumbel（EXP）偵測**（`js/gumbel.js`，移植自上游 `detect_gumbel.py`）。第一個不需要 sidecar、不需要模型權重、也不需要連外的統計型偵測器，所以線上版也能得出判定。它是同金鑰重放：判定為「乾淨」的意思是*不是這把金鑰*，不是*沒有浮水印*。
+- **Layer A 強化**（上游 #133）：`U+180F`、`U+3164`、`U+FFA0` 緊鄰自身書寫系統時保留、漂浮時移除；Unicode 非字元與保留的預設可忽略字元改為移除類；緊鄰自身書寫系統的排版控制字元（埃及聖書體象限、Duployan 速記、音樂符號連桿）予以保留。
+- **圖片容器**（上游 #176、#182、#183）：被移除的 ISOBMFF 盒改成就地覆寫為等長的 `free` 盒，因此清理後的 AVIF／HEIC 大小不變，檔案後段的媒體 offset 也仍然有效；被截斷的 PNG chunk 或 ISOBMFF 盒會保留尾段，不再一邊丟掉一邊宣稱檔案本來就是乾淨的。
+- Parity 錨點更新為 `text_unicode.py` `ab0197b06263`、`image_meta.py` `78e5a67db243`，以及新增的 `detect_gumbel.py` `f908272084cd`。
+
+### [v0.2.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.2.0)
+
+- **檢測器（Watermark Inspector）**：第三個分頁，對同一份輸入跑過每個偵測器並分別回報，涵蓋字元、中繼資料、統計三層，共用同一種結果契約（`js/detectors.js`）。
+- **文風統計**（`js/stylometry.js`，移植自 `score_stylometry.py`），上限是「不確定」，因為啟發式不是浮水印偵測器。
+- **統計層 sidecar**（`sidecar/unmark_stat.py`）：以 `transformers` 內建的參考偵測器做 Kirchenbauer／KGW 與 SynthID-Text 偵測，由 `serve_local.py --stat-upstream` 同源代理。僅限本機，預設關閉。
+
+### [v0.1.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.1.0)
+
+首個版本。瀏覽器端的 Layer A 文字清理與圖片容器清理、三個語系、`serve_local.py` 後面選用的本機 AI 改寫，以及把兩支引擎釘在上游的 parity 測試。
 
 ## 致謝與授權
 
