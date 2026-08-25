@@ -140,6 +140,11 @@
     if (cp >= 0x2190 && cp <= 0x25ff) return true; // arrows, technical, enclosed symbols
     if (cp >= 0x2600 && cp <= 0x27bf) return true;
     if (cp >= 0x2b00 && cp <= 0x2bff) return true;
+    // Emoji=Yes singletons outside the ranges above (general punctuation,
+    // letterlike symbols, supplemental arrows-B): !!, !?, i, curved up/down
+    // arrows. Without these a VS16 after them is stripped, visibly turning
+    // the emoji presentation back into the text glyph.
+    if (cp === 0x203c || cp === 0x2049 || cp === 0x2139 || cp === 0x2934 || cp === 0x2935) return true;
     if (cp === 0x00a9 || cp === 0x00ae || cp === 0x2122 || cp === 0x3030 || cp === 0x303d || cp === 0x3297 || cp === 0x3299) return true;
     if (cp === 0x23 || cp === 0x2a || (cp >= 0x30 && cp <= 0x39)) return true;
     return false;

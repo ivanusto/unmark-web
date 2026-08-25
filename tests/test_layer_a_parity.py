@@ -54,6 +54,11 @@ CASES = [
     "egyptian \U00013000\U00013430\U00013001 vs floating \U00013430 here",
     "duployan \U0001BC00\U0001BCA0\U0001BC01 vs floating \U0001BCA0 here",
     "musical \U0001D100\U0001D173\U0001D101 vs floating \U0001D173 here",
+    # upstream #200: Emoji=Yes singletons outside the block ranges. A VS16
+    # after one of them is presentation, not a carrier, so it is kept; the
+    # same selector adrift after a plain letter is still stripped.
+    "singletons \u203c\ufe0f \u2049\ufe0f \u2139\ufe0f \u2934\ufe0f \u2935\ufe0f, "
+    "zwj \u2139\ufe0f\u200d\U0001F4A1, stray a\ufe0f here",
 ]
 
 OPTION_SETS = [
