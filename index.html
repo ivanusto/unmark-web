@@ -151,7 +151,7 @@
 
       <div class="tab-pane" id="tab-file" role="tabpanel" aria-labelledby="tab-btn-file" hidden>
         <div class="main-card">
-          <input type="file" id="file-input" class="sr-only" multiple accept=".png,.jpg,.jpeg,.webp,.avif,.heic,.heif,.bmp,.gif,.tif,.tiff,.txt,.md,.markdown,.html,.htm,.svg,.pdf,.docx,.odt,.epub" />
+          <input type="file" id="file-input" class="sr-only" multiple accept=".png,.jpg,.jpeg,.webp,.avif,.heic,.heif,.bmp,.gif,.tif,.tiff,.mp4,.mov,.m4v,.m4a,.mp3,.wav,.flac,.txt,.md,.markdown,.html,.htm,.svg,.pdf,.docx,.odt,.epub" />
           <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-describedby="dropzone-desc">
             <div class="dropzone-icon" aria-hidden="true">📥</div>
             <div class="dropzone-title" data-i18n="dropTitle">Drop files here, or press Enter to browse</div>
@@ -185,7 +185,7 @@
             <div class="options-group">
               <button class="btn btn-secondary btn-sm" id="btn-inspect-from-text" type="button" data-i18n="inspectFromText">Use text from the Text tab</button>
               <button class="btn btn-secondary btn-sm" id="btn-inspect-file" type="button" data-i18n="inspectPickFile">Inspect an image file…</button>
-              <input type="file" id="inspect-file-input" class="sr-only" accept=".png,.jpg,.jpeg,.webp,.avif,.heic,.heif,.bmp,.gif,.tif,.tiff" />
+              <input type="file" id="inspect-file-input" class="sr-only" accept=".png,.jpg,.jpeg,.webp,.avif,.heic,.heif,.bmp,.gif,.tif,.tiff,.mp4,.mov,.m4v,.m4a,.mp3,.wav,.flac" />
               <span id="inspect-file-name" class="mode-note"></span>
             </div>
             <label class="checkbox-label inspect-key" id="inspect-key-wrap" hidden data-i18n-title="inspectKeyTitle">
@@ -253,6 +253,7 @@
 
   <script src="js/layer_a.js"></script>
   <script src="js/image_meta.js"></script>
+  <script src="js/av_meta.js"></script>
   <script src="js/api.js"></script>
   <script src="js/stylometry.js"></script>
   <script src="js/gumbel.js"></script>

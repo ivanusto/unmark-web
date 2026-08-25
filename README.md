@@ -27,10 +27,11 @@ Live demo: [https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/u
 | PNG / JPEG / WebP / AVIF / HEIC | drops `tEXt/zTXt/iTXt/eXIf/caBX/c2*` chunks, `APPn` (except JFIF) + `COM` segments, `EXIF/XMP/ICCP/C2PA` RIFF chunks with VP8X flag fix-up, and `jumb/c2pa/uuid` (XMP) ISOBMFF boxes plus their `meta` sub-boxes. Pixels are untouched (no canvas re-encode). "Keep non-AI metadata" mode only drops blocks with AI/C2PA hints. | same, plus optional pixel-domain backends if installed |
 | BMP / GIF / TIFF | BMP: drops the trailing bytes after the pixel payload (the only place BMP metadata can live) and rewrites the file-size field. GIF: drops comment and XMP/unknown application extensions, keeping NETSCAPE2.0 looping and ICC. TIFF (classic and BigTIFF): walks the IFD chains and drops XMP/EXIF/GPS/IPTC/Photoshop/MakerNote tags, patching each IFD in place so strip and tile offsets stay valid. | same |
 | PDF / DOCX / ODT / EPUB | no (needs server) | yes |
+| MP4 / MOV / M4A / M4V / WAV / MP3 / FLAC | drops the `jumb/c2pa/uuid` (XMP) ISOBMFF boxes an MP4 shares with AVIF and HEIC, plus `moov/udta` generator tags; WAV `C2PA`, `LIST INFO` and `id3 ` chunks; ID3v2 frames in MP3, and C2PA's `GEOB application/c2pa` frame in FLAC. Samples and frames are never touched. Read through `File.slice()`, so a long recording costs no more memory than a short one. | same |
 | Statistical text watermarks (Kirchenbauer / KGW, SynthID-Text) | **detect only**, via the optional local [sidecar](sidecar/README.md) (needs a model and the generator's key); never removed, see upstream Layer B for rewriting | via upstream `/detect` (MarkLLM harness) when the server advertises text detectors |
 | Pixel watermarks (SynthID image, …) | **no** | via upstream backends only |
 
-Two consequences of the container rules that surprise people:
+Three consequences of the container rules that surprise people:
 
 * **A cleaned AVIF or HEIC is the same size as the original.** A dropped ISOBMFF box is
   overwritten with an equal-size `free` box rather than spliced out, because closing the gap
@@ -40,6 +41,10 @@ Two consequences of the container rules that surprise people:
   chunk or ISOBMFF box declares more bytes than the file holds. That tail is copied through
   verbatim and reported as an action, so a recoverable image is not turned into an unopenable
   husk that claims it was already clean.
+* **Audio and video never enter memory.** The clean tab reads box and chunk headers through
+  `File.slice()` and hands the browser a `Blob` of slices of the original file, so a
+  multi-gigabyte recording is cleaned without holding it. Only the metadata regions are read.
+  The Inspector tab still reads its input whole and keeps the 64 MiB limit.
 
 ## Connecting a server
 
@@ -175,6 +180,14 @@ No build step, no dependencies at runtime. CSP: `default-src 'self'; connect-src
 ## Changelog
 
 Full notes on each [release](https://github.com/ivanusto/unmark-web/releases).
+
+### [v0.4.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.4.0)
+
+- **Audio and video** (`js/av_meta.js`, port of upstream's `av_meta.py`): MP4/MOV/M4A/M4V, WAV, MP3 and FLAC, in the browser. MP4 reuses the ISOBMFF box walker that already backs AVIF and HEIC.
+- **Cleaning a video does not mean holding it.** The engine ships two drivers over the same primitives: a whole-buffer one the parity suite checks against upstream, and a slice driver that walks headers through `File.slice()` and returns a `Blob` of slices of the original file. On a 128 MB MP4 it reads 0.32 KB and produces byte-identical output. The 64 MiB browser limit no longer applies to audio and video.
+- **A truncated MP4 keeps its media.** Upstream's `_strip_moov_udta` rebuilds the file from the boxes that parsed and drops the rest, while the action list says the tail was kept; this port keeps it, as upstream #182 already established for PNG and ISOBMFF. Reported as [guillaumemeyer/watermarks-remover#240](https://github.com/guillaumemeyer/watermarks-remover/issues/240) and recorded in `scripts/upstream-sources.json` until it lands.
+- The Inspector reports audio and video findings through the same metadata detectors, and now refuses files above its own limit instead of reading them anyway.
+- New parity anchor: `av_meta.py` `992981922d27`.
 
 ### [v0.3.1](https://github.com/ivanusto/unmark-web/releases/tag/v0.3.1)
 

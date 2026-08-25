@@ -111,10 +111,15 @@
 
   // ------------------------------------------------------------ metadata layer (image containers)
   const isFile = (input) => !!input && input.kind === "file" && input.u8 instanceof Uint8Array;
+  /* Image containers first, then the audio and video ones. Both inspectors
+   * report the same {has_c2pa, has_ai_metadata, findings} shape, and the
+   * buckets below are regexes over the finding prose, so MP4, WAV, MP3 and
+   * FLAC findings sort themselves without a second bucket table. */
   const imageReport = (input, cache) => {
     if (!("image" in cache)) {
-      const fmt = root.ImageMeta.detectFormat(input.u8);
-      cache.image = fmt ? root.ImageMeta.inspect(input.u8) : null;
+      cache.image = root.ImageMeta.detectFormat(input.u8) !== "unknown"
+        ? root.ImageMeta.inspect(input.u8)
+        : root.AvMeta.inspectAv(input.u8);
     }
     return cache.image;
   };
