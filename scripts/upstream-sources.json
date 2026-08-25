@@ -1,5 +1,5 @@
 {
-  "note": "The Python modules js/layer_a.js, js/image_meta.js, js/stylometry.js and js/gumbel.js were ported from. scripts/check-upstream.mjs compares the live content against these hashes. The parity suite proves the ported behaviour still matches for the cases it covers; this catches the rest: new options, new formats, anything the fixtures do not exercise. When one moves, re-port it and update `sha256` in the same commit.",
+  "note": "The Python modules js/layer_a.js, js/image_meta.js, js/av_meta.js, js/stylometry.js and js/gumbel.js were ported from. scripts/check-upstream.mjs compares the live content against these hashes. The parity suite proves the ported behaviour still matches for the cases it covers; this catches the rest: new options, new formats, anything the fixtures do not exercise. When one moves, re-port it and update `sha256` in the same commit.",
   "followUp": "If the parity suite is still green, the change is probably additive \u2014 a new format or option the fixtures do not reach. Add fixtures covering it, or the gap stays invisible the next time too.",
   "sources": [
     {
@@ -22,6 +22,17 @@
         "tests/test_image_meta_parity.py"
       ],
       "comment": "Deliberately partial: upstream #156 hardened the error handling around the external c2patool subprocess (a failed run is inconclusive, not 'no C2PA'). There is no c2patool and no run_optional_tools in a browser, so js/image_meta.js has nothing to mirror there. Partial for the same reason since upstream 8e16b822, which passes creationflags=subprocess_creationflags to every subprocess.run so a child process opens no console window on Windows: a browser starts no child processes. Everything else in this file is ported."
+    },
+    {
+      "id": "watermarks-remover/service/scripts/av_meta.py",
+      "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/av_meta.py",
+      "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/av_meta.py",
+      "sha256": "992981922d27d711bbe9ae00458f323df99a3ba1d65ef3c691ab9135b6c6dbeb",
+      "mirrors": [
+        "js/av_meta.js",
+        "tests/test_av_meta_parity.py"
+      ],
+      "comment": "One deliberate divergence, and it is a fix rather than an omission: upstream's _strip_moov_udta rebuilds an MP4 from the boxes that parsed and drops everything after them, so a truncated download loses its media while the action list still says the tail was kept. Reported as guillaumemeyer/watermarks-remover#240 with a one-line fix; js/av_meta.js keeps the tail, the way upstream #182 already established for PNG and ISOBMFF, and tests/test_av_meta_parity.py asserts both behaviours side by side. Remove this note once #240 lands. Also partial in the same way image_meta.py is: inspect_av and clean_av take filesystem paths and use safe_write_bytes, which has no counterpart in a browser."
     },
     {
       "id": "watermarks-remover/service/scripts/score_stylometry.py",

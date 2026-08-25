@@ -643,7 +643,7 @@
   const isC2paBox = (fourcc) => fourcc === "jumb" || fourcc === "c2pa" || fourcc.toLowerCase().startsWith("c2");
   const isXmpUuid = (payload) => payload.length >= 16 && XMP_UUID.every((b, i) => payload[i] === b);
 
-  function inspectIsobmff(u8, fmt) {
+  function inspectIsobmff(u8, fmt, { byteScan = true } = {}) {
     const F = fmt.toUpperCase();
     const findings = [];
     let hasC2pa = false, hasAi = false;
@@ -708,8 +708,13 @@
       }
     }
 
-    const whole = containsAny(u8, C2PA_MARKERS);
-    if (whole.length && !hasC2pa) { hasC2pa = true; findings.push(`byte-scan C2PA markers: ${whole.slice(0, 6).join(", ")}`); }
+    /* js/av_meta.js walks an MP4 box by box so a multi-gigabyte file never has
+     * to be held in memory, and runs this scan once over the whole file in
+     * chunks instead. Every other caller keeps it here. */
+    if (byteScan) {
+      const whole = containsAny(u8, C2PA_MARKERS);
+      if (whole.length && !hasC2pa) { hasC2pa = true; findings.push(`byte-scan C2PA markers: ${whole.slice(0, 6).join(", ")}`); }
+    }
     return { hasC2pa, hasAi: hasAi || hasC2pa, findings };
   }
 
@@ -1324,9 +1329,14 @@
     throw new Error("unsupported image format (expected PNG, JPEG, WebP, AVIF, HEIC, BMP, GIF or TIFF)");
   }
 
+  /* AI_META_HINTS, C2PA_MARKERS and the four ISOBMFF primitives are exported for
+   * js/av_meta.js, mirroring what upstream's av_meta.py imports from
+   * image_meta.py. Audio and video reuse this box walker rather than carrying a
+   * second one. */
   const api = { detectFormat, inspect, clean, inspectPng, inspectJpeg, inspectWebp, inspectIsobmff,
     inspectBmp, inspectGif, inspectTiff,
-    stripPng, stripJpeg, stripWebp, stripIsobmff, stripBmp, stripGif, stripTiff, containsAny };
+    stripPng, stripJpeg, stripWebp, stripIsobmff, stripBmp, stripGif, stripTiff, containsAny,
+    parseIsobmffBoxes, buildIsobmffBox, isobmffFreeBox, AI_META_HINTS, C2PA_MARKERS };
   root.ImageMeta = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

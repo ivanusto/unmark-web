@@ -13,6 +13,15 @@
     png: "image/png", jpeg: "image/jpeg", webp: "image/webp", avif: "image/avif",
     heic: "image/heic", bmp: "image/bmp", gif: "image/gif", tiff: "image/tiff",
   };
+  const AV_EXT = new Set(AvMeta.AV_EXTS);
+  // Same idea as IMAGE_MIME: keyed by the format the sniffer reported. MOV, M4A
+  // and M4V all detect as "mp4" (they are the same container), so the original
+  // extension picks the type back apart for the download.
+  const AV_MIME = {
+    mp4: { mp4: "video/mp4", m4v: "video/x-m4v", mov: "video/quicktime", m4a: "audio/mp4" },
+    wav: { wav: "audio/wav" }, mp3: { mp3: "audio/mpeg" }, flac: { flac: "audio/flac" },
+  };
+  const avMime = (format, ext) => (AV_MIME[format] || {})[ext] || "application/octet-stream";
   const TEXT_EXT = new Set(["txt", "md", "markdown", "html", "htm", "svg"]);
   const SERVER_ONLY_EXT = new Set(["pdf", "docx", "odt", "epub"]);
 
@@ -438,6 +447,15 @@
 
   function setInspectFile(file) {
     if (!file) { insp.input = null; $("inspect-file-name").textContent = ""; inspText.disabled = false; return; }
+    /* Unlike the clean tab this reads the whole input: the detector registry is
+     * synchronous and every detector wants the bytes. Refuse oversized files
+     * rather than letting a long recording take the tab down with it. */
+    if (file.size > BROWSER_MAX_BYTES) {
+      $("inspect-file-name").textContent = t("errTooLarge", {
+        size: fmtBytes(file.size), limit: fmtBytes(BROWSER_MAX_BYTES), engine: t("viaBrowser"),
+      });
+      return;
+    }
     file.arrayBuffer().then((buf) => {
       insp.input = { kind: "file", name: file.name, u8: new Uint8Array(buf) };
       $("inspect-file-name").textContent = t("inspectFileLoaded", { name: file.name, size: fmtBytes(file.size) });
@@ -561,7 +579,11 @@
     const ui = card(file); results.appendChild(ui.c);
     const ext = (file.name.split(".").pop() || "").toLowerCase();
     const viaServer = useServer() && server.reachable;
-    const limit = viaServer ? SERVER_MAX_BYTES : BROWSER_MAX_BYTES;
+    /* The browser cap is about how much of a file has to be held at once. Audio
+     * and video go through AvMeta's slice driver, which reads box and chunk
+     * headers and hands back a Blob of File slices, so the media never enters
+     * memory and a two-hour recording is no harder than a two-second one. */
+    const limit = viaServer ? SERVER_MAX_BYTES : (AV_EXT.has(ext) ? Infinity : BROWSER_MAX_BYTES);
     try {
       if (file.size > limit) throw new Error(t("errTooLarge", { size: fmtBytes(file.size), limit: fmtBytes(limit), engine: viaServer ? t("viaServer") : t("viaBrowser") }));
       let out;
@@ -590,6 +612,17 @@
       if (before.has_c2pa) findings.push(t("c2paFound")); else if (before.has_ai_metadata) findings.push(t("aiMetaFound"));
       findings.push(...before.findings, ...r.actions);
       return { blob: new Blob([r.data], { type: mime }), findings, suspicious: before.has_ai_metadata };
+    }
+    if (AV_EXT.has(ext)) {
+      const before = await AvMeta.inspectAvFile(file);
+      const r = await AvMeta.cleanAvFile(file, {
+        stripAllMetadata: !$("opt-keep-meta").checked,
+        type: avMime(before.format, ext),
+      });
+      const findings = [];
+      if (before.has_c2pa) findings.push(t("c2paFound")); else if (before.has_ai_metadata) findings.push(t("aiMetaFound"));
+      findings.push(...before.findings, ...r.actions);
+      return { blob: r.blob, findings, suspicious: before.has_ai_metadata || before.has_c2pa };
     }
     if (TEXT_EXT.has(ext)) {
       const text = await file.text();

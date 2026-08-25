@@ -27,10 +27,11 @@
 | PNG / JPEG / WebP / AVIF / HEIC | 移除 `tEXt/zTXt/iTXt/eXIf/caBX/c2*` 區塊、`APPn`（JFIF 除外）與 `COM` 區段、`EXIF/XMP/ICCP/C2PA` RIFF 區塊並修正 VP8X 旗標，以及 ISOBMFF 的 `jumb/c2pa/uuid`（XMP）盒與其 `meta` 子盒。像素不動（不經 canvas 重新編碼）。「保留非 AI 中繼資料」模式只移除帶有 AI／C2PA 跡象的區塊。 | 同左，若有安裝則額外提供像素域後端 |
 | BMP / GIF / TIFF | BMP：移除像素資料之後的尾端位元組（BMP 中繼資料唯一可能存在的位置）並改寫檔案大小欄位。GIF：移除註解與 XMP／未知的 application extension，保留 NETSCAPE2.0 循環與 ICC。TIFF（classic 與 BigTIFF）：走訪 IFD 鏈並移除 XMP／EXIF／GPS／IPTC／Photoshop／MakerNote 標籤，逐一原地修補 IFD，讓 strip 與 tile 的 offset 保持有效。 | 同左 |
 | PDF / DOCX / ODT / EPUB | 不支援（需要伺服器） | 支援 |
+| MP4／MOV／M4A／M4V／WAV／MP3／FLAC | 移除 MP4 與 AVIF／HEIC 共用的 `jumb`／`c2pa`／`uuid`（XMP）ISOBMFF 盒，以及 `moov/udta` 的生成器標籤；WAV 的 `C2PA`、`LIST INFO`、`id3 ` chunk；MP3 的 ID3v2 frame；FLAC 裡 C2PA 的 `GEOB application/c2pa` frame。取樣與影格完全不動。透過 `File.slice()` 讀取，長片與短片耗用的記憶體一樣多。 | 同上 |
 | 統計式文字浮水印（Kirchenbauer／KGW、SynthID-Text） | **只偵測**，透過選用的本機 [sidecar](sidecar/README.md)（需要模型與生成端的 key）；不移除，改寫請見上游 Layer B | 伺服器宣告文字偵測器時走上游 `/detect`（MarkLLM harness） |
 | 像素式浮水印（SynthID image 等） | **不支援** | 僅能透過上游後端 |
 
-容器處理有兩個常讓人意外的結果：
+容器處理有三個常讓人意外的結果：
 
 * **清理後的 AVIF／HEIC 檔案大小不變。** 被移除的 ISOBMFF 盒是就地覆寫成等長的 `free` 盒，
   而不是抽掉。抽掉會讓檔案後段所有絕對 offset 位移，圖就壞了。中繼資料確實已經消失：
@@ -38,6 +39,9 @@
 * **被截斷的檔案會保留截斷的尾段。** 下載中斷時，最後一個 PNG chunk 或 ISOBMFF 盒宣告的
   長度會超出檔案實際內容。那段尾巴會原樣保留並列進動作清單，避免把一個還救得回來的圖
   變成打不開的空殼，還宣稱它本來就是乾淨的。
+* **音訊與影片不會進到記憶體。** 清理分頁只透過 `File.slice()` 讀 box 與 chunk 的標頭，
+  交給瀏覽器的是由原檔切片組成的 `Blob`，因此幾 GB 的錄影也能在不持有整個檔案的情況下
+  清理，只有中繼資料那幾段會被讀進來。檢測器分頁仍然整份讀入，維持 64 MiB 上限。
 
 ## 連接伺服器
 
@@ -173,6 +177,14 @@ node scripts/check-upstream.mjs                                                 
 ## 版本紀錄
 
 各版完整說明見 [releases](https://github.com/ivanusto/unmark-web/releases)。
+
+### [v0.4.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.4.0)
+
+- **音訊與影片**（`js/av_meta.js`，移植自上游 `av_meta.py`）：MP4／MOV／M4A／M4V、WAV、MP3、FLAC，全部在瀏覽器裡完成。MP4 直接重用支撐 AVIF／HEIC 的那套 ISOBMFF box walker。
+- **清理影片不等於得把它整個抱著**。引擎在同一組原語上提供兩個 driver：整檔緩衝那個由 parity 測試對上游把關，切片 driver 則透過 `File.slice()` 走標頭、回傳由原檔切片組成的 `Blob`。128 MB 的 MP4 只讀 0.32 KB，輸出逐位元相同。64 MiB 的瀏覽器上限對音訊與影片不再適用。
+- **截斷的 MP4 會保住媒體**。上游的 `_strip_moov_udta` 從解析成功的 box 重建檔案、把其餘丟掉，動作清單卻寫著保留了尾段；本移植保留它，就像上游 #182 對 PNG 與 ISOBMFF 已經確立的做法。已報 [guillaumemeyer/watermarks-remover#240](https://github.com/guillaumemeyer/watermarks-remover/issues/240)，在它合併之前記錄於 `scripts/upstream-sources.json`。
+- 檢測器分頁透過同一組中繼資料偵測器回報音訊與影片的發現，並且會拒絕超過自身上限的檔案，而不是照讀不誤。
+- 新的 parity 錨點：`av_meta.py` `992981922d27`。
 
 ### [v0.3.1](https://github.com/ivanusto/unmark-web/releases/tag/v0.3.1)
 
