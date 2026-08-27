@@ -181,6 +181,11 @@ No build step, no dependencies at runtime. CSP: `default-src 'self'; connect-src
 
 Full notes on each [release](https://github.com/ivanusto/unmark-web/releases).
 
+### [v0.4.2](https://github.com/ivanusto/unmark-web/releases/tag/v0.4.2)
+
+- **The UI now says it handles audio and video.** The engines have cleaned and inspected MP4/MOV/M4A/M4V, MP3, WAV and FLAC since v0.4.0 and the file pickers accepted them, but the tagline, the Files tab label, both dropzone descriptions, the Inspector's button and empty state, and the meta description all still described an image tool. Nine strings across all three locales, plus the two stale inline English fallbacks in `index.html`.
+- **Corrected a claim that predates audio and video.** The server engine description said images were still handled on this device. Every dropped file goes to the server when one is connected; only text pasted into the Text tab stays local.
+
 ### [v0.4.1](https://github.com/ivanusto/unmark-web/releases/tag/v0.4.1)
 
 - **The truncated-MP4 divergence is gone: upstream took the same fix.** [guillaumemeyer/watermarks-remover#242](https://github.com/guillaumemeyer/watermarks-remover/pull/242) landed the tail-preserving rewrite this port already had, so `tests/test_av_meta_parity.py` now asserts the two agree instead of asserting they differ. #242 also added an `inspection_incomplete` flag that `clean_av` folds into `still_has_ai_metadata`; `cleanAv` and `cleanAvFile` carry it as `inspectionIncomplete`, and a truncated file is reported as unverified rather than clean.

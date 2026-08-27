@@ -178,6 +178,11 @@ node scripts/check-upstream.mjs                                                 
 
 各版完整說明見 [releases](https://github.com/ivanusto/unmark-web/releases)。
 
+### [v0.4.2](https://github.com/ivanusto/unmark-web/releases/tag/v0.4.2)
+
+- **介面終於說出它會處理音訊與影片**。自 v0.4.0 起引擎就會清理與檢測 MP4／MOV／M4A／M4V、MP3、WAV、FLAC，檔案選擇器也一直接受，但品牌副標、「檔案」分頁標籤、兩行拖放說明、檢測器的按鈕與空狀態、頁面 meta 描述全都還在描述一個只處理圖片的工具。三語系共九條字串，另加 `index.html` 裡兩處過時的英文行內備援。
+- **修正一句比音影更早就錯的說法**。伺服器引擎說明寫著圖片仍在本機處理。實際上只要連上伺服器，丟進來的每個檔案都會送出去；只有貼在「文字」分頁的內容留在本機。
+
 ### [v0.4.1](https://github.com/ivanusto/unmark-web/releases/tag/v0.4.1)
 
 - **截斷 MP4 的分歧結束了，上游採用了同一個修法**。[guillaumemeyer/watermarks-remover#242](https://github.com/guillaumemeyer/watermarks-remover/pull/242) 合併了本移植早就有的保留尾段寫法，因此 `tests/test_av_meta_parity.py` 現在斷言兩邊一致，而不是斷言兩邊不同。#242 另外加了一個 `inspection_incomplete` 旗標，`clean_av` 會把它併進 `still_has_ai_metadata`；`cleanAv` 與 `cleanAvFile` 以 `inspectionIncomplete` 帶著它，截斷的檔案會被回報為無法確認，而不是乾淨。
