@@ -622,7 +622,14 @@
       const findings = [];
       if (before.has_c2pa) findings.push(t("c2paFound")); else if (before.has_ai_metadata) findings.push(t("aiMetaFound"));
       findings.push(...before.findings, ...r.actions);
-      return { blob: r.blob, findings, suspicious: before.has_ai_metadata || before.has_c2pa };
+      /* Upstream folds inspection_incomplete into still_has_ai_metadata: a file
+       * we could not read to the end cannot be called clean. */
+      if (r.inspectionIncomplete) findings.push(t("avTruncated"));
+      return {
+        blob: r.blob,
+        findings,
+        suspicious: before.has_ai_metadata || before.has_c2pa || r.inspectionIncomplete,
+      };
     }
     if (TEXT_EXT.has(ext)) {
       const text = await file.text();

@@ -7,7 +7,8 @@ slice() so a video never has to be held in memory, then has to agree with the
 buffer driver on the same fixtures: it is a second traversal over shared
 primitives, and this is what stops it drifting away from the one parity checks.
 
-One deliberate divergence is asserted rather than skipped, at the bottom.
+The truncated-MP4 case this port once diverged on is asserted at the bottom,
+now that upstream #242 has converged on the same behaviour.
 
 Requires `node` and an upstream checkout (WATERMARKS_UPSTREAM_DIR, default
 ../watermarks-remover). Skips cleanly when either is missing.
@@ -190,14 +191,17 @@ def _py_inspect(data: bytes, fmt: str) -> tuple[bool, bool, list[str]]:
     return False, False, ["unsupported format (MP4/MOV/M4A/WAV/MP3/FLAC)"]
 
 
-def _py_clean(data: bytes, fmt: str, strip_all: bool) -> tuple[bytes, list[str]]:
+def _py_clean(data: bytes, fmt: str, strip_all: bool) -> tuple[bytes, list[str], bool]:
+    """Upstream #242 gave _strip_mp4 a third return value; the others still have two."""
     if fmt == "mp4":
         return av_meta._strip_mp4(data, strip_all_metadata=strip_all)
     if fmt == "wav":
-        return av_meta._strip_wav(data, strip_all_metadata=strip_all)
-    if fmt == "mp3":
-        return av_meta._strip_id3v2(data, strip_all_metadata=strip_all)
-    return av_meta._strip_flac(data, strip_all_metadata=strip_all)
+        cleaned, actions = av_meta._strip_wav(data, strip_all_metadata=strip_all)
+    elif fmt == "mp3":
+        cleaned, actions = av_meta._strip_id3v2(data, strip_all_metadata=strip_all)
+    else:
+        cleaned, actions = av_meta._strip_flac(data, strip_all_metadata=strip_all)
+    return cleaned, actions, False
 
 
 @pytest.mark.parametrize("name", sorted(SAMPLES))
@@ -221,11 +225,12 @@ def test_inspect_parity(name: str) -> None:
 def test_clean_parity(name: str, strip_all: bool) -> None:
     data = SAMPLES[name]
     fmt = av_meta.detect_av_format(data)
-    py_bytes, py_actions = _py_clean(data, fmt, strip_all)
+    py_bytes, py_actions, py_incomplete = _py_clean(data, fmt, strip_all)
     js = _js("clean", data, {"stripAllMetadata": strip_all})
     assert "error" not in js, js
     assert js["format"] == fmt, name
     assert js["actions"] == py_actions, name
+    assert js["inspectionIncomplete"] == py_incomplete, name
     assert base64.b64decode(js["data"]) == py_bytes, name
 
 
@@ -257,32 +262,42 @@ def test_slice_driver_clean_matches_buffer_driver(name: str, strip_all: bool) ->
     assert _js("clean-file", data, opts) == _js("clean", data, opts), name
 
 
-# ------------------------------------------------------------- the divergence
+# ------------------------------------------------- the tail upstream once lost
 
 TRUNCATED_MP4 = SAMPLES["mp4_udta_ai"][:-256]
 
 
-def test_truncated_mp4_keeps_its_tail_where_upstream_drops_it() -> None:
-    """guillaumemeyer/watermarks-remover#240.
+def test_truncated_mp4_keeps_its_tail_the_way_upstream_now_does() -> None:
+    """guillaumemeyer/watermarks-remover#240, fixed upstream by #242.
 
-    upstream's _strip_moov_udta rebuilds the file from the boxes that parsed, so
-    everything after the first box whose size overruns the data is discarded,
-    even though the strip_isobmff pass just before it preserved that tail and
-    put "kept N bytes of truncated tail" in the action list. This port keeps the
-    tail, as upstream #182 already established for PNG and ISOBMFF.
+    upstream's _strip_moov_udta used to rebuild the file from the boxes that
+    parsed, so everything after the first box whose size overran the data was
+    discarded, even though the strip_isobmff pass just before it had preserved
+    that tail and put "kept N bytes of truncated tail" in the action list. This
+    port kept the tail, as upstream #182 already established for PNG and
+    ISOBMFF. #242 took the same approach, so this asserts the two agree rather
+    than that they differ, and covers the inspection_incomplete flag it added.
     """
-    upstream_bytes, upstream_actions = av_meta._strip_mp4(TRUNCATED_MP4, strip_all_metadata=True)
+    upstream_bytes, upstream_actions, upstream_incomplete = av_meta._strip_mp4(
+        TRUNCATED_MP4, strip_all_metadata=True)
     assert any("kept" in a and "truncated tail" in a for a in upstream_actions)
-    assert len(upstream_bytes) < len(TRUNCATED_MP4) // 2, "upstream is expected to lose the media here"
+    assert len(upstream_bytes) == len(TRUNCATED_MP4), "upstream keeps the media since #242"
+    assert upstream_incomplete is True
 
     for mode in ("clean", "clean-file"):
         js = _js(mode, TRUNCATED_MP4, {"stripAllMetadata": True})
         cleaned = base64.b64decode(js["data"])
         assert js["actions"] == upstream_actions, mode
+        assert js["inspectionIncomplete"] is True, mode
+        assert cleaned == upstream_bytes, mode
         assert len(cleaned) == len(TRUNCATED_MP4), mode
-        # Only the metadata was rewritten; the truncated tail is byte-identical.
-        tail = len(TRUNCATED_MP4) - len(upstream_bytes)
-        assert cleaned[-tail:] == TRUNCATED_MP4[-tail:], mode
+
+
+def test_a_complete_mp4_is_not_reported_as_partially_inspected() -> None:
+    """The flag has to stay off for the files that parse whole, in both drivers."""
+    for mode in ("clean", "clean-file"):
+        js = _js(mode, SAMPLES["mp4_udta_ai"], {"stripAllMetadata": True})
+        assert js["inspectionIncomplete"] is False, mode
 
 
 def test_truncated_mp4_still_inspects_like_upstream() -> None:

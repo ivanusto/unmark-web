@@ -27,12 +27,12 @@
       "id": "watermarks-remover/service/scripts/av_meta.py",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/av_meta.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/av_meta.py",
-      "sha256": "992981922d27d711bbe9ae00458f323df99a3ba1d65ef3c691ab9135b6c6dbeb",
+      "sha256": "579b01cbac34db22621b19d20f37a85f349f2daf1a99028d02a87ec8e1e77298",
       "mirrors": [
         "js/av_meta.js",
         "tests/test_av_meta_parity.py"
       ],
-      "comment": "One deliberate divergence, and it is a fix rather than an omission: upstream's _strip_moov_udta rebuilds an MP4 from the boxes that parsed and drops everything after them, so a truncated download loses its media while the action list still says the tail was kept. Reported as guillaumemeyer/watermarks-remover#240 with a one-line fix; js/av_meta.js keeps the tail, the way upstream #182 already established for PNG and ISOBMFF, and tests/test_av_meta_parity.py asserts both behaviours side by side. Remove this note once #240 lands. Also partial in the same way image_meta.py is: inspect_av and clean_av take filesystem paths and use safe_write_bytes, which has no counterpart in a browser."
+      "comment": "This port used to diverge here: upstream's _strip_moov_udta rebuilt an MP4 from the boxes that parsed and dropped everything after them, so a truncated download lost its media while the action list still said the tail was kept. Reported as guillaumemeyer/watermarks-remover#240 and fixed upstream by #242, which keeps the tail the same way and adds an inspection_incomplete flag that clean_av folds into still_has_ai_metadata. js/av_meta.js carries the same flag as inspectionIncomplete through both drivers, and tests/test_av_meta_parity.py now asserts the two agree. Partial in the same way image_meta.py is: inspect_av and clean_av take filesystem paths and use safe_write_bytes, which has no counterpart in a browser. clean_av's post-clean re-inspection is also not mirrored: the page inspects before cleaning and reports through the UI instead."
     },
     {
       "id": "watermarks-remover/service/scripts/score_stylometry.py",

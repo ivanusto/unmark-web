@@ -181,6 +181,11 @@ No build step, no dependencies at runtime. CSP: `default-src 'self'; connect-src
 
 Full notes on each [release](https://github.com/ivanusto/unmark-web/releases).
 
+### Unreleased
+
+- **The truncated-MP4 divergence is gone: upstream took the same fix.** [guillaumemeyer/watermarks-remover#242](https://github.com/guillaumemeyer/watermarks-remover/pull/242) landed the tail-preserving rewrite this port already had, so `tests/test_av_meta_parity.py` now asserts the two agree instead of asserting they differ. #242 also added an `inspection_incomplete` flag that `clean_av` folds into `still_has_ai_metadata`; `cleanAv` and `cleanAvFile` carry it as `inspectionIncomplete`, and a truncated file is reported as unverified rather than clean.
+- New parity anchor: `av_meta.py` `579b01cbac34`.
+
 ### [v0.4.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.4.0)
 
 - **Audio and video** (`js/av_meta.js`, port of upstream's `av_meta.py`): MP4/MOV/M4A/M4V, WAV, MP3 and FLAC, in the browser. MP4 reuses the ISOBMFF box walker that already backs AVIF and HEIC.

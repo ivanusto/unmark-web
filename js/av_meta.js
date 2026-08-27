@@ -24,12 +24,13 @@
  * to hold a gigabyte in a tab to produce it. tests/test_av_meta_parity.py
  * asserts the two drivers agree byte for byte on every fixture.
  *
- * One deliberate divergence from upstream, marked DIVERGENCE below:
- * upstream's `_strip_moov_udta` rebuilds an MP4 from the boxes that parsed and
- * drops everything after them, so a truncated download loses its media while
- * the action list says the tail was kept (reported as
- * guillaumemeyer/watermarks-remover#240). This port keeps the tail, the way
- * upstream #182 already fixed it for PNG and ISOBMFF.
+ * A truncated MP4 keeps its media here. Upstream's `_strip_moov_udta` used to
+ * rebuild the file from the boxes that parsed and drop everything after them,
+ * so a truncated download lost its media while the action list said the tail
+ * was kept; this port kept the tail the way upstream #182 already had for PNG
+ * and ISOBMFF. Reported as guillaumemeyer/watermarks-remover#240 and fixed
+ * upstream by #242, which took the same approach and added the
+ * `inspectionIncomplete` report carried through the strip results below.
  *
  * Works as a plain <script> (window.AvMeta, needs image_meta.js first) and as a
  * CommonJS module.
@@ -113,12 +114,13 @@
       }
       out.push(IM.buildIsobmffBox("moov", concat(newMoov), headerSize));
     }
-    /* DIVERGENCE (upstream #240): upstream stops here, which throws away
-     * everything past the last box that parsed. On a truncated download that is
-     * the media itself, and the action list still claims the tail was kept
-     * because the earlier stripIsobmff pass had preserved it. */
+    /* Everything past the last box that parsed is the media itself on a
+     * truncated download, and the earlier stripIsobmff pass had already
+     * preserved it. Upstream #242 settled on the same two lines. */
     if (scannedEnd < u8.length) out.push(u8.subarray(scannedEnd));
-    return { data: concat(out), actions };
+    /* A tail too short to hold a box header is not worth reporting, which is
+     * the threshold upstream picked for inspection_incomplete. */
+    return { data: concat(out), actions, inspectionIncomplete: u8.length - scannedEnd >= 8 };
   }
 
   function inspectMp4(u8, { byteScan = true } = {}) {
@@ -137,7 +139,11 @@
     const iso = IM.stripIsobmff(u8, "mp4", { stripAllMetadata });
     const udta = stripMoovUdta(iso.data, { stripAllMetadata });
     const actions = iso.actions.filter((a) => !a.startsWith("no MP4 metadata")).concat(udta.actions);
-    return { data: udta.data, actions: actions.length ? actions : [NO_MP4_ACTION] };
+    return {
+      data: udta.data,
+      actions: actions.length ? actions : [NO_MP4_ACTION],
+      inspectionIncomplete: udta.inspectionIncomplete,
+    };
   }
 
   // -------------------------------------------------------------------- ID3v2
@@ -440,11 +446,18 @@
     return { format: fmt, has_c2pa: r.hasC2pa, has_ai_metadata: r.hasAi, findings: r.findings, notes };
   }
 
-  /** cleanAv(u8, {stripAllMetadata}) -> {format, data, actions}; throws on an unsupported format. */
+  /**
+   * cleanAv(u8, {stripAllMetadata}) -> {format, data, actions, inspectionIncomplete};
+   * throws on an unsupported format. inspectionIncomplete means the file ended
+   * mid-box, so the tail was preserved but never inspected, and the result cannot
+   * be called clean. Only MP4 can set it.
+   */
   function cleanAv(u8, { stripAllMetadata = true } = {}) {
     const fmt = detectAvFormat(u8);
     if (fmt === "mp4") return { format: fmt, ...stripMp4(u8, { stripAllMetadata }) };
-    if (fmt === "wav") return { format: fmt, ...stripWav(u8, { stripAllMetadata }) };
+    if (fmt === "wav") {
+      return { format: fmt, ...stripWav(u8, { stripAllMetadata }), inspectionIncomplete: false };
+    }
     if (fmt === "mp3" || fmt === "flac") {
       const region = fmt === "mp3"
         ? stripId3v2Region(u8, { stripAllMetadata })
@@ -452,7 +465,7 @@
       const data = region.replacement === null
         ? u8
         : concat([region.replacement, u8.subarray(region.total)]);
-      return { format: fmt, data, actions: region.actions };
+      return { format: fmt, data, actions: region.actions, inspectionIncomplete: false };
     }
     throw new Error(`unsupported audio/video format for cleaning: ${fmt}`);
   }
@@ -568,13 +581,17 @@
       parts.push(new Blob([udta.data]));
     }
     const tailActions = [];
+    /* isobmffBoxIndex only yields boxes that parsed whole, so the per-box
+     * stripMoovUdta calls above never see truncation. The file-level tail is
+     * the one that decides inspectionIncomplete, on the same >= 8 threshold. */
+    const inspectionIncomplete = file.size - scannedEnd >= 8;
     if (scannedEnd < file.size) {
       const tail = file.size - scannedEnd;
       parts.push(file.slice(scannedEnd));
       if (tail >= 8) tailActions.push(`kept ${tail} bytes of truncated tail (file truncated)`);
     }
     const actions = [...isoActions, ...tailActions, ...udtaActions];
-    return { parts, actions: actions.length ? actions : [NO_MP4_ACTION] };
+    return { parts, actions: actions.length ? actions : [NO_MP4_ACTION], inspectionIncomplete };
   }
 
   /** Read only as much of an ID3v2 tag as the header says it is. */
@@ -688,7 +705,8 @@
   }
 
   /**
-   * cleanAvFile(file, {stripAllMetadata, type}) -> {format, blob, actions}.
+   * cleanAvFile(file, {stripAllMetadata, type}) -> {format, blob, actions,
+   * inspectionIncomplete}.
    * The Blob is assembled from slices of the original File, so the bytes that
    * are not being changed never enter memory.
    */
@@ -700,7 +718,12 @@
     else if (fmt === "mp3") r = await cleanTagFile(file, stripId3v2Region, { stripAllMetadata });
     else if (fmt === "flac") r = await cleanTagFile(file, stripFlacRegion, { stripAllMetadata });
     else throw new Error(`unsupported audio/video format for cleaning: ${fmt}`);
-    return { format: fmt, blob: new Blob(r.parts, type ? { type } : undefined), actions: r.actions };
+    return {
+      format: fmt,
+      blob: new Blob(r.parts, type ? { type } : undefined),
+      actions: r.actions,
+      inspectionIncomplete: r.inspectionIncomplete === true,
+    };
   }
 
   const api = {

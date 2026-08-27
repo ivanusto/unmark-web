@@ -178,6 +178,11 @@ node scripts/check-upstream.mjs                                                 
 
 各版完整說明見 [releases](https://github.com/ivanusto/unmark-web/releases)。
 
+### 未發行
+
+- **截斷 MP4 的分歧結束了，上游採用了同一個修法**。[guillaumemeyer/watermarks-remover#242](https://github.com/guillaumemeyer/watermarks-remover/pull/242) 合併了本移植早就有的保留尾段寫法，因此 `tests/test_av_meta_parity.py` 現在斷言兩邊一致，而不是斷言兩邊不同。#242 另外加了一個 `inspection_incomplete` 旗標，`clean_av` 會把它併進 `still_has_ai_metadata`；`cleanAv` 與 `cleanAvFile` 以 `inspectionIncomplete` 帶著它，截斷的檔案會被回報為無法確認，而不是乾淨。
+- 新的 parity 錨點：`av_meta.py` `579b01cbac34`。
+
 ### [v0.4.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.4.0)
 
 - **音訊與影片**（`js/av_meta.js`，移植自上游 `av_meta.py`）：MP4／MOV／M4A／M4V、WAV、MP3、FLAC，全部在瀏覽器裡完成。MP4 直接重用支撐 AVIF／HEIC 的那套 ISOBMFF box walker。
