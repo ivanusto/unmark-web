@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="dark light" />
   <title data-i18n="docTitle">Unmark: invisible marks &amp; metadata remover</title>
-  <meta name="description" data-i18n-content="docDesc" content="Unmark is a browser-first web client: strip invisible Unicode marks and C2PA/EXIF/XMP metadata locally, or drive the watermarks-remover Python service." />
+  <meta name="description" data-i18n-content="docDesc" content="Unmark is a browser-first web client: strip invisible Unicode marks and C2PA/EXIF/XMP/ID3 metadata from text, images, audio and video locally, or drive the watermarks-remover Python service." />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src *; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="css/app.css" />
@@ -18,7 +18,7 @@
         <div class="brand-icon" aria-hidden="true">🛡️</div>
         <div>
           <div class="brand-title" data-i18n="appTitle">Unmark</div>
-          <div class="brand-sub" data-i18n="appSub">Invisible Unicode marks &amp; image metadata · works with watermarks-remover</div>
+          <div class="brand-sub" data-i18n="appSub">Invisible Unicode marks &amp; metadata in images, audio and video · works with watermarks-remover</div>
         </div>
       </a>
       <div class="header-controls">
@@ -75,7 +75,7 @@
           <span aria-hidden="true">📝</span><span data-i18n="tabText">Text (Layer A)</span>
         </button>
         <button class="tab-btn" role="tab" id="tab-btn-file" aria-selected="false" aria-controls="tab-file" data-tab="tab-file" tabindex="-1" type="button">
-          <span aria-hidden="true">📁</span><span data-i18n="tabFile">Files &amp; images (metadata / C2PA)</span>
+          <span aria-hidden="true">📁</span><span data-i18n="tabFile">Files &amp; media (metadata / C2PA)</span>
         </button>
         <button class="tab-btn" role="tab" id="tab-btn-inspect" aria-selected="false" aria-controls="tab-inspect" data-tab="tab-inspect" tabindex="-1" type="button">
           <span aria-hidden="true">🔬</span><span data-i18n="tabInspect">Inspector</span>
@@ -155,7 +155,7 @@
           <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-describedby="dropzone-desc">
             <div class="dropzone-icon" aria-hidden="true">📥</div>
             <div class="dropzone-title" data-i18n="dropTitle">Drop files here, or press Enter to browse</div>
-            <div class="dropzone-desc" id="dropzone-desc" data-i18n="dropDescBrowser">On this device: PNG, JPEG, WebP, AVIF, HEIC (metadata), TXT/MD/HTML/SVG (Layer A text only). PDF, DOCX, ODT need a server.</div>
+            <div class="dropzone-desc" id="dropzone-desc" data-i18n="dropDescBrowser">On this device: PNG, JPEG, WebP, AVIF, HEIC, BMP, GIF, TIFF and MP4, MOV, M4A, M4V, MP3, WAV, FLAC (metadata; audio and video at any size), TXT/MD/HTML/SVG (Layer A text only). PDF, DOCX, ODT need a server.</div>
           </div>
           <div class="options-bar mt-14">
             <div class="options-group">
@@ -184,7 +184,7 @@
           <div class="options-bar mt-14">
             <div class="options-group">
               <button class="btn btn-secondary btn-sm" id="btn-inspect-from-text" type="button" data-i18n="inspectFromText">Use text from the Text tab</button>
-              <button class="btn btn-secondary btn-sm" id="btn-inspect-file" type="button" data-i18n="inspectPickFile">Inspect an image file…</button>
+              <button class="btn btn-secondary btn-sm" id="btn-inspect-file" type="button" data-i18n="inspectPickFile">Inspect an image, audio or video file…</button>
               <input type="file" id="inspect-file-input" class="sr-only" accept=".png,.jpg,.jpeg,.webp,.avif,.heic,.heif,.bmp,.gif,.tif,.tiff,.mp4,.mov,.m4v,.m4a,.mp3,.wav,.flac" />
               <span id="inspect-file-name" class="mode-note"></span>
             </div>
