@@ -16,23 +16,23 @@
       "id": "watermarks-remover/service/scripts/image_meta.py",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/image_meta.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/image_meta.py",
-      "sha256": "3bde868717f5ae216c578f1f669021fa90551c1acbf846f15cb817fe3339cf34",
+      "sha256": "4fb8990b4743b9123f543dd87a2f589c0bbbecf5f5ce5447c9548b43c5306806",
       "mirrors": [
         "js/image_meta.js",
         "tests/test_image_meta_parity.py"
       ],
-      "comment": "Deliberately partial: upstream #156 hardened the error handling around the external c2patool subprocess (a failed run is inconclusive, not 'no C2PA'). There is no c2patool and no run_optional_tools in a browser, so js/image_meta.js has nothing to mirror there. Partial for the same reason since upstream 8e16b822, which passes creationflags=subprocess_creationflags to every subprocess.run so a child process opens no console window on Windows: a browser starts no child processes. Everything else in this file is ported."
+      "comment": "Deliberately partial: upstream #156 hardened the error handling around the external c2patool subprocess (a failed run is inconclusive, not 'no C2PA'). There is no c2patool and no run_optional_tools in a browser, so js/image_meta.js has nothing to mirror there. Partial for the same reason since upstream 8e16b822, which passes creationflags=subprocess_creationflags to every subprocess.run so a child process opens no console window on Windows: a browser starts no child processes. Everything else in this file is ported. Partial in two more ways since 2026-08-27: upstream #252 refuses HTTP redirects in _synthid_score_http to block SSRF, and #254 adds a `changed` field to clean_image's returned dict for clean_file.py's new --only-changed flag. Neither has a browser counterpart: this port makes no HTTP calls, and clean() returns bytes rather than writing a file, so the caller already holds both sides to compare."
     },
     {
       "id": "watermarks-remover/service/scripts/av_meta.py",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/av_meta.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/av_meta.py",
-      "sha256": "579b01cbac34db22621b19d20f37a85f349f2daf1a99028d02a87ec8e1e77298",
+      "sha256": "213e9fd53130d80165ede74338a6564cc6daba7aa1fe4af8fb733e69550855ee",
       "mirrors": [
         "js/av_meta.js",
         "tests/test_av_meta_parity.py"
       ],
-      "comment": "This port used to diverge here: upstream's _strip_moov_udta rebuilt an MP4 from the boxes that parsed and dropped everything after them, so a truncated download lost its media while the action list still said the tail was kept. Reported as guillaumemeyer/watermarks-remover#240 and fixed upstream by #242, which keeps the tail the same way and adds an inspection_incomplete flag that clean_av folds into still_has_ai_metadata. js/av_meta.js carries the same flag as inspectionIncomplete through both drivers, and tests/test_av_meta_parity.py now asserts the two agree. Partial in the same way image_meta.py is: inspect_av and clean_av take filesystem paths and use safe_write_bytes, which has no counterpart in a browser. clean_av's post-clean re-inspection is also not mirrored: the page inspects before cleaning and reports through the UI instead."
+      "comment": "This port used to diverge here: upstream's _strip_moov_udta rebuilt an MP4 from the boxes that parsed and dropped everything after them, so a truncated download lost its media while the action list still said the tail was kept. Reported as guillaumemeyer/watermarks-remover#240 and fixed upstream by #242, which keeps the tail the same way and adds an inspection_incomplete flag that clean_av folds into still_has_ai_metadata. js/av_meta.js carries the same flag as inspectionIncomplete through both drivers, and tests/test_av_meta_parity.py now asserts the two agree. Partial in the same way image_meta.py is: inspect_av and clean_av take filesystem paths and use safe_write_bytes, which has no counterpart in a browser. clean_av's post-clean re-inspection is also not mirrored: the page inspects before cleaning and reports through the UI instead. Partial in one more way since upstream #254: clean_av's returned dict gained a `changed` field for clean_file.py's new --only-changed flag. cleanAv here returns the bytes rather than writing a file, so the caller already holds both sides to compare."
     },
     {
       "id": "watermarks-remover/service/scripts/score_stylometry.py",
