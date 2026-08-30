@@ -49,7 +49,7 @@ jobs:
       - name: Run the parity suite against upstream main
         id: parity
         continue-on-error: true
-        run: WATERMARKS_UPSTREAM_DIR="$PWD/upstream" pytest -q
+        run: WATERMARKS_UPSTREAM_DIR="$PWD/upstream" pytest tests/ -q -rs
 
       - name: Record which upstream commit was tested
         id: upstream
@@ -82,7 +82,7 @@ jobs:
               parts.push(
                 '### Parity suite is failing',
                 '',
-                'The JavaScript engines no longer produce the same output as upstream for cases the fixtures cover. Read the run log for the failing cases, port the change into `js/layer_a.js` or `js/image_meta.js`, and add fixtures for anything new.',
+                'The JavaScript engines no longer produce the same output as upstream for cases the fixtures cover. Read the run log for the failing cases, port the change into the engine it belongs to (`js/layer_a.js`, `js/image_meta.js`, `js/av_meta.js`, `js/stylometry.js` or `js/gumbel.js`), and add fixtures for anything new.',
                 ''
               );
             }

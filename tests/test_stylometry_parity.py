@@ -118,6 +118,17 @@ TIE_DENSITY = (
     "It is important to note that " + " ".join(f"w{i}" for i in range(74)) + "."
 )
 
+NEW_MARKERS = (
+    "The project stands as a testament to the team, marking a pivotal moment for the field, "
+    "reflecting the vibrant and breathtaking scope of a nestled campus. It is a game-changer "
+    "with unparalleled, world-class, state-of-the-art results, a revolutionary and "
+    "groundbreaking leap. We leverage and utilize every tool; the platform boasts a suite that "
+    "is not just fast, it is durable, and it is not just quick but also cheap. Let us dive into "
+    "the detail, and dive into it again. In order to ship, and due to the fact that time is "
+    "short, it is worth noting that the future looks bright. Needless to say, sure thing! "
+    "Great question! Happy to help."
+)
+
 CASES = {
     "empty": "",
     "whitespace_only": "  \n\t\r\n  ",
@@ -153,6 +164,24 @@ CASES = {
     "no_word_chars": "!!! ??? ... --- ''' ,,, ;;; :::",
     "quotes_and_brackets": '"Quoted start." (Parenthetical one.) [Bracketed two.] \'Single three.\' 9 lives. x',
     "hyphen_apostrophe_edges": "-start end- 'quoted' rock'n'roll --double-- it's o'clock don't well-known ' - '' --",
+    # ---- upstream #258: new markers, match spans, density tiers
+    "new_markers": NEW_MARKERS,
+    "new_markers_curly_apostrophe": NEW_MARKERS.replace("'", "\u2019"),
+    # Spans are code-point offsets on the Python side. Every emoji before a
+    # match shifts the UTF-16 index by one, so these are the cases that catch a
+    # port reporting JS string indices.
+    "astral_before_marker": "\U0001f600\U0001f680 Let us delve into the topic. " + HUMAN_PROSE,
+    "astral_between_markers": (
+        "\U0001f600 delve into it. \U0001f680\U0001f4a1 A myriad of options. "
+        "\U0001f4a1 In conclusion, we delve into more. " + HUMAN_PROSE
+    ),
+    "astral_cjk_ext": "\U00020000\U0002a6b2 delve into this. " + HUMAN_PROSE,
+    # samples caps at 3 and spans at 10, so a marker has to fire more than ten
+    # times for the two caps to disagree.
+    "marker_over_span_cap": "Ultimately, " * 14 + HUMAN_PROSE,
+    # Tier boundaries: classify_density switches at 0.40 and at the threshold.
+    "tier_boundary_low": " ".join(f"w{i}" for i in range(120)) + ". Moreover, done.",
+    "tier_boundary_high": (MARKER_DENSE + " ") * 2 + LLM_PROSE,
 }
 
 
@@ -176,6 +205,10 @@ def _assert_same(js: dict, py: dict) -> None:
                 assert ma["count"] == mb["count"]
                 assert math.isclose(ma["weight"], mb["weight"], rel_tol=0, abs_tol=1e-9)
                 assert ma["samples"] == mb["samples"], (ma["phrase"], ma["samples"], mb["samples"])
+                # Upstream #258 records match offsets. Python counts code
+                # points, JS counts UTF-16 code units, so this is the assertion
+                # that catches an astral character shifting every later span.
+                assert ma["spans"] == mb["spans"], (ma["phrase"], ma["spans"], mb["spans"])
         else:
             assert a == b, (key, a, b)
 

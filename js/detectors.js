@@ -188,15 +188,28 @@
       if (rep.burstiness_cv != null) evidence.push({ label: "burstiness_cv", detail: String(rep.burstiness_cv) });
       if (rep.lexical_diversity != null) evidence.push({ label: "lexical_diversity", detail: String(rep.lexical_diversity) });
       evidence.push({ label: "ai_ngram_density", detail: String(rep.ai_ngram_density) });
+      if (rep.density_tier) evidence.push({ label: "density_tier", detail: String(rep.density_tier) });
       for (const m of rep.matched_markers || []) evidence.push({ label: "marker", detail: `${m.phrase} ×${m.count} (w=${m.weight})` });
       for (const f of rep.findings || []) evidence.push({ label: "finding", detail: f });
+      /* Since upstream #258 a sample below the calibration floor reports score
+       * and confidence_level as null rather than 0.0/CLEAN, so the branch that
+       * catches it has to come first: falling through would render "no score"
+       * as a clean verdict, which is the one thing the null is there to avoid. */
       let status = "clean";
-      if (rep.status === "insufficient_length") status = "not_tested";
-      else if (rep.confidence_level === "HIGH" || rep.confidence_level === "MEDIUM") status = "uncertain";
+      let noteKey = "inspect.noteHeuristic";
+      if (rep.status === "insufficient_length") {
+        status = "not_tested";
+        noteKey = "inspect.noteUncalibrated";
+      } else if (rep.confidence_level === "HIGH" || rep.confidence_level === "MEDIUM") {
+        status = "uncertain";
+      }
       return result(def, {
         status, score: rep.score, threshold: root.Stylometry.DEFAULT_THRESHOLD != null ? root.Stylometry.DEFAULT_THRESHOLD : null,
-        evidence, noteKey: "inspect.noteHeuristic",
-        meta: { word_count: rep.word_count, sentence_count: rep.sentence_count, confidence_level: rep.confidence_level, status: rep.status },
+        evidence, noteKey,
+        meta: {
+          word_count: rep.word_count, sentence_count: rep.sentence_count,
+          confidence_level: rep.confidence_level, density_tier: rep.density_tier, status: rep.status,
+        },
       });
     },
   });
