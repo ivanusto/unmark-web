@@ -70,6 +70,10 @@ def make_webp(chunks: list[tuple[bytes, bytes]], flags: int) -> bytes:
 XMP_AI = b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF><digitalSourceType>trainedAlgorithmicMedia</digitalSourceType></rdf:RDF></x:xmpmeta>'
 JUMBF = b"\x00\x00\x00\x1fjumb\x00\x00\x00\x17jumdc2pa\x00\x11\x00\x10\x80\x00\x00\xaa\x00\x38\x9b\x71\x03c2pa\x00"
 XMP_UUID = b"\xbe\x7a\xcf\xcb\x97\xa9\x42\xe8\x9c\x71\x99\x94\x91\xe3\xaf\xac"
+# C2PA ContentProvenanceBox user type for BMFF containers (upstream #264). A
+# manifest lives in a top-level `uuid` box carrying this user type, not in a
+# `c2pa` box, so a payload with no ASCII marker is recognized by type alone.
+C2PA_BMFF_UUID = bytes.fromhex("d8fec3d61b0e483c92975828877ec481")
 
 
 def iso_box(fourcc: bytes, payload: bytes) -> bytes:
@@ -298,6 +302,41 @@ SAMPLES = {
     "avif_truncated_tail": truncate_isobmff(
         make_isobmff(b"avif", [(b"uuid", XMP_UUID + XMP_AI), (b"meta", iso_meta([(b"hdlr", b"\x00" * 12 + b"pict")]))]), 4),
     "avif_truncated_junk": make_isobmff(b"avif", [(b"c2pa", JUMBF)]) + b"\x00\x01\x02",
+    # Upstream #264. The merkle and no-marker payloads are the cases the old
+    # substring scan missed entirely in keep mode; bad_offset is the one it
+    # wrongly matched, and it must survive a keep-mode clean.
+    "avif_c2pa_prov_uuid": make_isobmff(b"avif", [
+        (b"uuid", C2PA_BMFF_UUID + b"manifest\x00" + b"c2pa" + b"\x00" * 8 + b"jumb"),
+    ]),
+    "avif_c2pa_prov_no_marker": make_isobmff(b"avif", [
+        (b"uuid", C2PA_BMFF_UUID + b"manifest\x00" + bytes(range(1, 64))),
+    ]),
+    "avif_c2pa_prov_merkle": make_isobmff(b"avif", [
+        (b"uuid", C2PA_BMFF_UUID + b"merkle\x00" + bytes(range(1, 128))),
+    ]),
+    "avif_c2pa_prov_offset4": make_isobmff(b"avif", [
+        (b"uuid", b"\x00\x00\x00\x00" + C2PA_BMFF_UUID + b"manifest\x00" + b"data"),
+    ]),
+    "avif_uuid_c2pa_bytes_bad_offset": make_isobmff(b"avif", [
+        (b"uuid", b"\x00" + C2PA_BMFF_UUID + b"not-a-manifest"),
+    ]),
+    "avif_meta_c2pa_prov_uuid": make_isobmff(b"avif", [
+        (b"meta", iso_meta([
+            (b"hdlr", b"\x00" * 12 + b"pict"),
+            (b"uuid", C2PA_BMFF_UUID + b"manifest\x00" + bytes(range(1, 48))),
+        ])),
+    ]),
+    # The box walk stops at the overrunning mdat, so the manifest sits in the
+    # unparsed tail and only the whole-file fallback can see it: the C2PA user
+    # type follows a `uuid` fourcc, but no ASCII marker does.
+    "avif_prov_uuid_in_tail": (
+        iso_box(b"ftyp", b"avif\x00\x00\x00\x00avifmif1")
+        + b"\x00\x00\xff\xff"
+        + b"mdat"
+        + b"uuid"
+        + C2PA_BMFF_UUID
+        + bytes(range(1, 32))
+    ),
     "png_truncated_tail": make_truncated_png([(b"tEXt", b"Software\x00ChatGPT")], b"\x01\x02\x03\x04\x05\x06"),
     "bmp_clean": make_bmp(),
     "bmp_trailing_ai": make_bmp(b"digitalSourceType=trainedAlgorithmicMedia"),
@@ -412,7 +451,15 @@ def test_isobmff_free_box_preserves_offsets() -> None:
     That is what keeps every absolute offset later in the file valid, so the
     cleaned image is the same length and mdat has not moved.
     """
-    for name in ("avif_xmp_c2pa", "heic_c2pa_box", "heic_meta", "avif_uuid_plain"):
+    for name in (
+        "avif_xmp_c2pa",
+        "heic_c2pa_box",
+        "heic_meta",
+        "avif_uuid_plain",
+        "avif_c2pa_prov_uuid",
+        "avif_c2pa_prov_merkle",
+        "avif_meta_c2pa_prov_uuid",
+    ):
         src = SAMPLES[name]
         out = base64.b64decode(_js("clean", src, {})["data"])
         assert len(out) == len(src), name
@@ -421,6 +468,27 @@ def test_isobmff_free_box_preserves_offsets() -> None:
         for secret in (XMP_AI, JUMBF, b"harmless camera note"):
             if secret in src:
                 assert secret not in out, (name, secret)
+
+
+def test_c2pa_prov_box_survives_only_where_upstream_keeps_it() -> None:
+    """Upstream #264: the user type drives detection and removal, not a substring.
+
+    A manifest whose payload carries no ASCII `c2pa`/`jumb` is stripped even in
+    keep mode, while a uuid box that merely happens to hold the same 16 bytes at
+    an offset the spec does not use is left alone.
+    """
+    for name in ("avif_c2pa_prov_uuid", "avif_c2pa_prov_no_marker", "avif_c2pa_prov_merkle",
+                 "avif_c2pa_prov_offset4", "avif_meta_c2pa_prov_uuid"):
+        src = SAMPLES[name]
+        assert _js("inspect", src, {})["has_c2pa"] is True, name
+        for strip_all in (True, False):
+            out = base64.b64decode(_js("clean", src, {"stripAllMetadata": strip_all})["data"])
+            assert C2PA_BMFF_UUID not in out, (name, strip_all)
+
+    src = SAMPLES["avif_uuid_c2pa_bytes_bad_offset"]
+    assert _js("inspect", src, {})["has_c2pa"] is False
+    kept = base64.b64decode(_js("clean", src, {"stripAllMetadata": False})["data"])
+    assert C2PA_BMFF_UUID in kept
 
 
 def test_bmp_and_tiff_structural_invariants() -> None:

@@ -2,6 +2,7 @@
 // Test shim for js/av_meta.js. On stdin, JSON out:
 //   {"mode":"detect","file":<base64>}                       -> {"format":...}
 //   {"mode":"inspect","file":<base64>}                      -> the report
+//   {"mode":"provscan-file","file":<base64>,"chunkSize":N}   -> {"found":bool}
 //   {"mode":"clean","file":<base64>,"options":{...}}         -> {format, actions,
 //                                                             inspectionIncomplete, data}
 // The same two with a "-file" suffix run the slice driver over a File built
@@ -30,6 +31,9 @@ process.stdin.on("end", async () => {
       });
     }
     const file = new File([bytes], req.name || "input.bin");
+    if (req.mode === "provscan-file") {
+      return write({ found: await AvMeta.containsC2paProvBoxInFile(file, req.chunkSize || undefined) });
+    }
     if (req.mode === "detect-file") return write({ format: await AvMeta.detectAvFormatFile(file) });
     if (req.mode === "inspect-file") return write(await AvMeta.inspectAvFile(file));
     if (req.mode === "clean-file") {

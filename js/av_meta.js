@@ -504,6 +504,23 @@
     return needles.filter((n) => found.has(n));
   }
 
+  /* The chunked counterpart of image_meta's containsC2paProvBox, for the same
+   * reason containsAnyInFile exists: the buffer driver scans the whole file at
+   * once, this one must reach the same answer without holding it. The match
+   * window is the `uuid` fourcc plus the 20 bytes after it, so consecutive
+   * chunks overlap by one byte less than that. */
+  async function containsC2paProvBoxInFile(file, chunkSize = SCAN_CHUNK) {
+    const overlap = 27;
+    let pos = 0;
+    while (pos < file.size) {
+      const end = Math.min(pos + chunkSize, file.size);
+      const u8 = await bytesOf(file, Math.max(0, pos - overlap), end);
+      if (IM.containsC2paProvBox(u8)) return true;
+      pos = end;
+    }
+    return false;
+  }
+
   /** Walk top-level ISOBMFF boxes, reading only headers. */
   async function isobmffBoxIndex(file) {
     const boxes = [];
@@ -559,7 +576,13 @@
     // The whole-file scan the buffer driver runs at the end of inspectIsobmff,
     // before the moov/udta findings are appended.
     const whole = await containsAnyInFile(file, IM.C2PA_MARKERS);
-    if (whole.length && !hasC2pa) { hasC2pa = true; findings.push(`byte-scan C2PA markers: ${whole.slice(0, 6).join(", ")}`); }
+    if (whole.length && !hasC2pa) {
+      hasC2pa = true;
+      findings.push(`byte-scan C2PA markers: ${whole.slice(0, 6).join(", ")}`);
+    } else if (!whole.length && !hasC2pa && (await containsC2paProvBoxInFile(file))) {
+      hasC2pa = true;
+      findings.push("byte-scan C2PA BMFF content-provenance user type");
+    }
     hasAi = hasAi || hasC2pa; // inspectIsobmff folds these together before returning
     findings.push(...udtaFindings);
     return { hasC2pa: hasC2pa || udtaC2pa, hasAi: hasAi || udtaAi, findings };
@@ -730,7 +753,7 @@
     AV_EXTS, detectAvFormat, detectAvFormatFile,
     inspectAv, cleanAv, inspectAvFile, cleanAvFile,
     inspectMp4, stripMp4, inspectId3v2, stripId3v2Region, inspectFlac, stripFlacRegion,
-    inspectWav, stripWav, parseId3v2Frames, containsAnyInFile,
+    inspectWav, stripWav, parseId3v2Frames, containsAnyInFile, containsC2paProvBoxInFile,
   };
   root.AvMeta = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
