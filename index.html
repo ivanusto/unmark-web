@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="dark light" />
-  <title data-i18n="docTitle">Unmark: invisible marks &amp; metadata remover</title>
-  <meta name="description" data-i18n-content="docDesc" content="Unmark is a browser-first web client: strip invisible Unicode marks and C2PA/EXIF/XMP/ID3 metadata from text, images, audio and video locally, or drive the watermarks-remover Python service." />
+  <title data-i18n="docTitle">Unmark: remove AI watermarks and metadata, in your browser</title>
+  <meta name="description" data-i18n-content="docDesc" content="Remove the digital watermarks AI tools leave behind: invisible Unicode marks in text and C2PA/EXIF/XMP/ID3 metadata in images, audio and video. Runs locally in your browser, with an Inspector that also tests for the statistical watermarks no metadata strip can touch." />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src *; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="css/app.css" />
@@ -14,11 +14,11 @@
   <a class="sr-only" href="#main" data-i18n="skipLink">Skip to content</a>
   <div class="app-container">
     <header>
-      <a href="#" class="brand" aria-label="Unmark: invisible marks &amp; metadata remover">
+      <a href="#" class="brand" aria-label="Unmark: remove AI watermarks and metadata, in your browser">
         <div class="brand-icon" aria-hidden="true">🛡️</div>
         <div>
           <div class="brand-title" data-i18n="appTitle">Unmark</div>
-          <div class="brand-sub" data-i18n="appSub">Invisible Unicode marks &amp; metadata in images, audio and video · works with watermarks-remover</div>
+          <div class="brand-sub" data-i18n="appSub">Remove AI watermarks and provenance metadata · in your browser · works with watermarks-remover</div>
         </div>
       </a>
       <div class="header-controls">
@@ -32,6 +32,24 @@
     </header>
 
     <main id="main">
+      <section class="intro" aria-labelledby="intro-lead">
+        <p class="intro-lead" id="intro-lead" data-i18n="introLead">Unmark removes the digital watermarks and provenance marks that AI tools leave on what they generate: the invisible Unicode characters hidden in text, and the C2PA, EXIF, XMP and ID3 metadata carried inside image, audio and video files. It runs in your browser, so nothing is uploaded.</p>
+        <div class="intro-cards">
+          <div class="intro-card">
+            <h2 class="intro-card-title"><span class="intro-card-icon" aria-hidden="true">🧽</span><span data-i18n="introRemovesTitle">What it removes</span></h2>
+            <p data-i18n="introRemovesBody">Invisible Unicode carriers in text (zero-width characters, variation selectors, homoglyph spaces), and container metadata in files: C2PA / Content Credentials, EXIF, XMP, PNG text chunks, ID3 tags. Pixels, samples and waveforms are never touched and nothing is re-encoded.</p>
+          </div>
+          <div class="intro-card intro-card-caveat">
+            <h2 class="intro-card-title"><span class="intro-card-icon" aria-hidden="true">⚠️</span><span data-i18n="introLimitsTitle">What it cannot remove</span></h2>
+            <p data-i18n="introLimitsBody">Statistical watermarks (SynthID-Text, KGW, keyed-Gumbel) live in how tokens were sampled, and pixel-domain watermarks live in the image itself. Neither is a character or a metadata field, so stripping those does not remove them. The Inspector tab tests for them separately and says so plainly.</p>
+          </div>
+          <div class="intro-card">
+            <h2 class="intro-card-title"><span class="intro-card-icon" aria-hidden="true">🔍</span><span data-i18n="introHowTitle">How to trust it</span></h2>
+            <p data-i18n="introHowBody">The engines are a faithful JavaScript port of the upstream watermarks-remover Python service, held to byte-for-byte parity tests on every change. No uploads, no analytics, no third-party requests. Open source, MIT.</p>
+          </div>
+        </div>
+      </section>
+
       <div class="privacy-banner" role="status">
         <div class="privacy-text">
           <span aria-hidden="true">🔒</span>

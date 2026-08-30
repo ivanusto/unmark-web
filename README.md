@@ -4,6 +4,11 @@
 
 > Renamed from `watermarks-remover-web` in August 2026, at the upstream maintainer's request, so it isn't mistaken for an official component. GitHub redirects the old repository URL; the demo moved to the address below.
 
+**Removes the digital watermarks and provenance marks that AI tools leave on what they generate**: the invisible Unicode
+characters hidden in text, and the C2PA, EXIF, XMP and ID3 metadata carried inside image, audio and video files. It also
+tells you, honestly, which watermarks it cannot remove: statistical ones live in how tokens were sampled and pixel-domain
+ones live in the image itself, so no metadata strip touches them. The Inspector tab tests for those separately.
+
 Independent, browser-first web client for **[guillaumemeyer/watermarks-remover](https://github.com/guillaumemeyer/watermarks-remover)**, inspired by and compatible with its HTTP API. Not affiliated with the upstream project.
 
 - **Runs entirely in the browser** for text (Layer A: invisible Unicode / homoglyph spaces) and PNG / JPEG / WebP / AVIF / HEIC / BMP / GIF / TIFF metadata (C2PA, EXIF, XMP, text chunks). No uploads, no analytics, no web fonts, no third-party requests.
@@ -180,6 +185,13 @@ No build step, no dependencies at runtime. CSP: `default-src 'self'; connect-src
 ## Changelog
 
 Full notes on each [release](https://github.com/ivanusto/unmark-web/releases).
+
+### [v0.6.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.6.0)
+
+- **The page now says what the tool is for.** A visitor landing on the demo got a one-line tagline and a row of tabs. There is now a lead paragraph and three cards above the fold: what it removes, **what it cannot remove**, and why the output can be trusted. The middle card gets the same weight as the other two rather than being a footnote, because "the metadata is gone" and "the watermark is gone" are different claims and that difference is the whole reason the Inspector tab exists. Title, meta description and tagline lead with watermark removal instead of describing the file formats.
+- **Morandi palette, light and dark.** Low-saturation, grey-leaning hues on a warm neutral ground: eucalyptus accent, sage, ochre and faded terracotta for status, unbleached linen or warm charcoal for the page. Every colour now comes from a token, including the thirteen that were written out by hand in rules across the stylesheet.
+- **The palette's accessibility claim is tested, not asserted.** `tests/test_theme_contrast.py` parses the tokens out of `css/app.css` and checks that every text and badge colour clears WCAG AA (4.5:1) against each background it can sit on, in both themes, compositing the translucent card colour over the page first. It also fails if the light theme forgets to override a colour token, which would silently leave a dark-theme value on a pale ground.
+- The tagline is hidden below 560px, where it wrapped to five lines and pushed the header controls off the row.
 
 ### [v0.5.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.5.0)
 
