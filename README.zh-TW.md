@@ -4,6 +4,9 @@
 
 > 2026 年 8 月應上游維護者要求，自 `watermarks-remover-web` 改名，以免被誤認為官方元件。GitHub 會將舊的 repository 網址重新導向；線上示範已改到下方網址。
 
+**移除 AI 工具留在生成內容上的數位浮水印與來源標記**：藏在文字裡看不見的 Unicode 字元，以及圖片、音訊、影片檔案裡的 C2PA、EXIF、XMP、ID3 中繼資料。
+它也會照實告訴你哪些浮水印移除不了：統計式浮水印藏在 token 的取樣方式裡，像素域浮水印藏在影像本身，清中繼資料碰不到它們。「檢測器」分頁會分別檢測這些。
+
 **[guillaumemeyer/watermarks-remover](https://github.com/guillaumemeyer/watermarks-remover)** 的獨立瀏覽器優先網頁客戶端，靈感來自該專案，並相容於它的 HTTP API。與上游專案無隸屬關係。
 
 - **完全在瀏覽器中執行**：文字（Layer A：隱形 Unicode／同形字空白）與 PNG／JPEG／WebP／AVIF／HEIC／BMP／GIF／TIFF 中繼資料（C2PA、EXIF、XMP、文字區塊）皆是。不上傳、不做分析追蹤、不載入網頁字型、不發送任何第三方請求。

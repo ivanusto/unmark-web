@@ -1,54 +1,91 @@
+/*
+ * Morandi palette: low-saturation, grey-leaning hues on a warm neutral ground,
+ * after Giorgio Morandi's still lifes. Every colour carries some of the same
+ * grey, which is what keeps the page quiet enough to read a diff or a findings
+ * table in. The muting is deliberate but the contrast is not: every text and
+ * badge colour below clears WCAG AA (4.5:1) against both the page and the card
+ * background it can sit on, in both themes.
+ *
+ * :root is the dark theme; [data-theme="light"] overrides it. js/app.js sets
+ * data-theme on <body> from localStorage, falling back to prefers-color-scheme.
+ */
 :root {
-  --bg-primary: #0b0f19;
-  --bg-secondary: #111827;
-  --bg-card: rgba(17, 24, 39, 0.85);
-  --bg-card-hover: rgba(31, 41, 55, 0.7);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-focus: rgba(99, 102, 241, 0.6);
-  --text-primary: #f9fafb;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
-  --accent: #6366f1;
-  --accent-hover: #4f46e5;
-  --accent-light: rgba(99, 102, 241, 0.15);
-  --success: #10b981;
-  --success-bg: rgba(16, 185, 129, 0.12);
-  --warning: #f59e0b;
-  --warning-bg: rgba(245, 158, 11, 0.12);
-  --danger: #ef4444;
-  --danger-bg: rgba(239, 68, 68, 0.12);
+  /* Warm charcoal rather than black: a neutral grey ground reads as a hole in
+     the screen next to these hues. */
+  --bg-primary: #22201e;
+  --bg-secondary: #2a2725;
+  --bg-card: rgba(48, 45, 42, 0.88);
+  --bg-card-hover: rgba(60, 56, 52, 0.75);
+  --border-color: rgba(233, 228, 220, 0.10);
+  --border-focus: rgba(157, 181, 177, 0.55);
+  --text-primary: #e9e4dc;
+  --text-secondary: #aba49b;
+  --text-muted: #8a827a;
+  --accent: #9db5b1;          /* dusty eucalyptus */
+  --accent-hover: #b2c6c2;
+  --accent-light: rgba(157, 181, 177, 0.16);
+  --accent-ring: rgba(157, 181, 177, 0.22);
+  --accent-edge: rgba(157, 181, 177, 0.28);
+  --accent-glow: rgba(157, 181, 177, 0.18);
+  --on-accent: #22201e;       /* dark ink on a light accent */
+  --success: #a3bc96;         /* sage */
+  --success-bg: rgba(163, 188, 150, 0.14);
+  --success-edge: rgba(163, 188, 150, 0.28);
+  --warning: #d6b27c;         /* ochre */
+  --warning-bg: rgba(214, 178, 124, 0.14);
+  --warning-edge: rgba(214, 178, 124, 0.30);
+  --danger: #d79a92;          /* faded terracotta */
+  --danger-bg: rgba(215, 154, 146, 0.14);
+  --danger-edge: rgba(215, 154, 146, 0.32);
+  --brand-from: #7d8f8b;      /* the brand tile is the one place with a wash */
+  --brand-to: #9a8e88;
+  --on-brand: #f4f1ec;
   --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --radius-sm: 8px;
   --radius-md: 14px;
   --radius-lg: 20px;
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.22);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.30);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.38);
+  --shadow-accent: 0 4px 12px rgba(0, 0, 0, 0.28);
 }
 
 [data-theme="light"] {
-  --bg-primary: #f8fafc;
-  --bg-secondary: #ffffff;
-  --bg-card: rgba(255, 255, 255, 0.95);
-  --bg-card-hover: rgba(241, 245, 249, 0.9);
-  --border-color: rgba(0, 0, 0, 0.08);
-  --border-focus: rgba(99, 102, 241, 0.5);
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-light: rgba(79, 70, 229, 0.08);
-  --success: #059669;
-  --success-bg: rgba(5, 150, 105, 0.1);
-  --warning: #d97706;
-  --warning-bg: rgba(217, 119, 6, 0.1);
-  --danger: #dc2626;
-  --danger-bg: rgba(220, 38, 38, 0.1);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.08);
+  /* Unbleached linen, not white. The hues are the same family as the dark
+     theme, taken deeper so they still clear AA on a pale ground. */
+  --bg-primary: #ebe7e0;
+  --bg-secondary: #f6f3ee;
+  --bg-card: rgba(251, 249, 246, 0.96);
+  --bg-card-hover: rgba(243, 239, 233, 0.92);
+  --border-color: rgba(51, 48, 44, 0.12);
+  --border-focus: rgba(76, 103, 100, 0.55);
+  --text-primary: #33302c;
+  --text-secondary: #635c55;
+  --text-muted: #7a7269;
+  --accent: #4c6764;
+  --accent-hover: #3d5451;
+  --accent-light: rgba(76, 103, 100, 0.10);
+  --accent-ring: rgba(76, 103, 100, 0.18);
+  --accent-edge: rgba(76, 103, 100, 0.26);
+  --accent-glow: rgba(76, 103, 100, 0.22);
+  --on-accent: #fbf9f6;
+  --success: #4e6746;
+  --success-bg: rgba(78, 103, 70, 0.10);
+  --success-edge: rgba(78, 103, 70, 0.24);
+  --warning: #7c5c2c;
+  --warning-bg: rgba(124, 92, 44, 0.10);
+  --warning-edge: rgba(124, 92, 44, 0.26);
+  --danger: #8b4f49;
+  --danger-bg: rgba(139, 79, 73, 0.10);
+  --danger-edge: rgba(139, 79, 73, 0.28);
+  --brand-from: #6f827e;
+  --brand-to: #8d817b;
+  --on-brand: #fbf9f6;
+  --shadow-sm: 0 2px 8px rgba(51, 48, 44, 0.06);
+  --shadow-md: 0 8px 24px rgba(51, 48, 44, 0.08);
+  --shadow-lg: 0 16px 40px rgba(51, 48, 44, 0.10);
+  --shadow-accent: 0 4px 12px rgba(51, 48, 44, 0.14);
 }
 
 * {
@@ -100,14 +137,14 @@ header {
   width: 40px;
   height: 40px;
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, #6366f1, #a855f7);
+  background: linear-gradient(135deg, var(--brand-from), var(--brand-to));
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--on-brand);
   font-weight: 700;
   font-size: 20px;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+  box-shadow: var(--shadow-accent);
 }
 
 .brand-title {
@@ -172,6 +209,67 @@ header {
 }
 
 /* Privacy Banner */
+/* Intro: what this tool is, what it is not. The caveat card is deliberately
+   given the same weight as the other two rather than tucked into a footnote,
+   because "metadata is gone" and "the watermark is gone" are not the same
+   claim and the difference is the whole point of the Inspector tab. */
+.intro {
+  margin-bottom: 24px;
+}
+
+.intro-lead {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  max-width: 76ch;
+  margin-bottom: 18px;
+}
+
+.intro-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.intro-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-top: 3px solid var(--accent-edge);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px 16px;
+}
+
+.intro-card-caveat {
+  border-top-color: var(--warning);
+}
+
+.intro-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.intro-card-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.intro-card p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 900px) {
+  .intro-cards { grid-template-columns: 1fr; }
+  .intro-lead { font-size: 14px; }
+}
+
 .privacy-banner {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -207,12 +305,12 @@ header {
   font-weight: 600;
   background: var(--success-bg);
   color: var(--success);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 1px solid var(--success-edge);
 }
 .engine-status-badge.server-mode {
   background: var(--accent-light);
   color: var(--accent);
-  border-color: rgba(99, 102, 241, 0.25);
+  border-color: var(--accent-edge);
 }
 .status-dot {
   width: 7px;
@@ -249,7 +347,7 @@ header {
 }
 .tab-btn.active {
   background: var(--accent);
-  color: #ffffff;
+  color: var(--on-accent);
   box-shadow: var(--shadow-sm);
 }
 .tab-btn:hover:not(.active) {
@@ -292,6 +390,12 @@ header {
   .text-grid { grid-template-columns: 1fr; }
 }
 
+/* The tagline is a second line for the title, not a thing to read on a phone:
+   at this width it wraps to five lines and pushes the controls off the row. */
+@media (max-width: 560px) {
+  .brand-sub { display: none; }
+}
+
 .text-box-container {
   display: flex;
   flex-direction: column;
@@ -332,7 +436,7 @@ textarea {
 }
 textarea:focus {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 .output-preview {
@@ -427,12 +531,12 @@ textarea:focus {
   font-family: var(--font-mono);
   background: var(--warning-bg);
   color: var(--warning);
-  border: 1px solid rgba(245, 158, 11, 0.25);
+  border: 1px solid var(--warning-edge);
 }
 .tag-badge.clean {
   background: var(--success-bg);
   color: var(--success);
-  border-color: rgba(16, 185, 129, 0.25);
+  border-color: var(--success-edge);
 }
 
 /* Actions */
@@ -458,8 +562,8 @@ textarea:focus {
 }
 .btn-primary {
   background: var(--accent);
-  color: #ffffff;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-accent);
 }
 .btn-primary:hover {
   background: var(--accent-hover);
@@ -723,12 +827,12 @@ footer a:hover {
 .inspect-name { min-width: 180px; font-weight: 600; }
 .inspect-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .flag { font-size: 10px; font-weight: 500; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border-color); color: var(--text-muted); font-family: var(--font-mono); }
-.flag-heuristic { color: var(--warning); border-color: rgba(245, 158, 11, 0.4); }
+.flag-heuristic { color: var(--warning); border-color: var(--warning-edge); }
 .inspect-score { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); white-space: nowrap; margin-top: 4px; }
 td.inspect-score { margin-top: 0; }
-.tag-badge.status-clean { background: var(--success-bg); color: var(--success); border-color: rgba(16, 185, 129, 0.25); }
-.tag-badge.status-detected { background: var(--danger-bg); color: var(--danger); border-color: rgba(239, 68, 68, 0.3); }
-.tag-badge.status-uncertain { background: var(--warning-bg); color: var(--warning); border-color: rgba(245, 158, 11, 0.3); }
+.tag-badge.status-clean { background: var(--success-bg); color: var(--success); border-color: var(--success-edge); }
+.tag-badge.status-detected { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-edge); }
+.tag-badge.status-uncertain { background: var(--warning-bg); color: var(--warning); border-color: var(--warning-edge); }
 .tag-badge.status-unavailable, .tag-badge.status-not_tested, .tag-badge.status-not_applicable {
   background: transparent; color: var(--text-muted); border-color: var(--border-color);
 }
