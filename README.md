@@ -169,17 +169,26 @@ There is no `package.json` here, because nothing at runtime or in the test suite
 - `js/detectors.js`: the Inspector's detector registry: one result contract for the character, metadata and statistical layers, plus `summarize()` / `compare()` for the Overall box and the before/after view
 - `js/api.js`: client for `/health /capabilities /inspect /clean /detect`, plus the optional `/llm-config` + `/llm` rewrite calls and `/stat-config` + `/stat` sidecar calls
 - `js/i18n.js`, `js/app.js`, `css/app.css`, `index.html`: UI (English / 繁體中文 / 简体中文, light/dark, keyboard-accessible). The locale is picked from `navigator.languages` and remembered in `localStorage`; adding a language is one entry in `LANGS` plus one dictionary in `js/i18n.js`.
-- `tests/test_layer_a_parity.py`, `tests/test_image_meta_parity.py`, `tests/test_stylometry_parity.py`, `tests/test_gumbel_parity.py`: cross-engine parity vs the upstream checkout (skipped if `node` or the checkout is missing)
+- `tests/test_layer_a_parity.py`, `tests/test_image_meta_parity.py`, `tests/test_av_meta_parity.py`, `tests/test_stylometry_parity.py`, `tests/test_gumbel_parity.py`, `tests/test_contains_any_parity.py`, `tests/test_c2pa_prov_scan_parity.py`, `tests/test_finding_confidence_parity.py`: cross-engine parity vs the upstream checkout (skipped if `node` or the checkout is missing, so the suite is run with `-rs`)
 - `tests/test_i18n_keys.py`: every locale carries every key, and every `data-i18n` attribute in `index.html` resolves. A gap there is invisible at runtime, because `t()` falls back silently.
 - `serve_local.py`: same-origin static + `/api` proxy, the optional `/llm` rewrite proxy and the optional `/stat` sidecar proxy
 - `sidecar/`: the statistical-detector sidecar (its own `requirements.txt`; never part of the page)
-- `scripts/check-upstream.mjs`: run it with `node scripts/check-upstream.mjs`; hashes the upstream Python modules against `scripts/upstream-sources.json`; `.github/workflows/upstream-check.yml` runs it and the parity suite daily and files an issue when either signal fires. Parity catches behaviour that changed; the hashes catch changes the fixtures do not reach, such as a newly supported format.
+- `scripts/check-upstream.mjs`: run it with `node scripts/check-upstream.mjs`; hashes the upstream Python modules against `scripts/upstream-sources.json` (a source can carry a `slice` to track one definition instead of a whole file, for modules this project mirrors only part of); `.github/workflows/upstream-check.yml` runs it and the parity suite daily and files an issue when either signal fires. Parity catches behaviour that changed; the hashes catch changes the fixtures do not reach, such as a newly supported format.
 
 No build step, no dependencies at runtime. CSP: `default-src 'self'; connect-src *` (the latter so you can point at your own server).
 
 ## Changelog
 
 Full notes on each [release](https://github.com/ivanusto/unmark-web/releases).
+
+### [v0.5.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.5.0)
+
+- **C2PA manifests in AVIF, HEIC, MP4 and MOV are recognized by user type, not by a substring.** C2PA stores its manifest in a BMFF container as a top-level `uuid` box whose user type is `d8fec3d6-1b0e-483c-9297-5828877ec481`, not as a `c2pa` box. This port special-cased XMP's user type and otherwise looked for ASCII `c2pa`/`jumb` in the payload, so a manifest carrying neither (an auxiliary `merkle` box, a binary manifest store) was caught by luck in strip-all mode and missed entirely in "keep non-AI metadata" mode. Ported from upstream #264, with the equal-size `free` replacement unchanged, so a cleaned file still keeps its length and its media offsets.
+- **Stylometry no longer scores a sample it cannot measure.** Below the 30-word calibration floor the score and confidence level are absent rather than `0.0` / `CLEAN`, and the Inspector says the sample was too short instead of showing a dash. Every report also carries a `density_tier`, and the marker table gained twenty patterns. Ported from upstream #258.
+- **A Layer A space homoglyph is informational, not probable** (upstream #273), in the finding-confidence helper this port mirrors from upstream's `common.py`.
+- **The drift check can now track a single definition.** `common.py` is not ported wholesale, only `classify_finding_confidence`, so hashing the whole file would have filed an issue every time upstream touched anything else. A source in `scripts/upstream-sources.json` can now carry a `slice`, and `common.py` is tracked that way. Before this, the #273 change was invisible here.
+- **CI was grading someone else's suite.** `pytest -q` ran from the repo root, where the workflow also checks out `upstream/`, so the verdict included upstream's own tests. Both workflows now run `pytest tests/ -q -rs`, the `-rs` because a parity file that skips itself when it cannot find its upstream module is otherwise a silent pass.
+- New parity anchors: `image_meta.py` `360da6bac49f`, `score_stylometry.py` `57dcbd2cb1ec`, and `common.py` tracked by slice.
 
 ### [v0.4.2](https://github.com/ivanusto/unmark-web/releases/tag/v0.4.2)
 
