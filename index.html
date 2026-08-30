@@ -32,24 +32,6 @@
     </header>
 
     <main id="main">
-      <section class="intro" aria-labelledby="intro-lead">
-        <p class="intro-lead" id="intro-lead" data-i18n="introLead">Unmark removes the digital watermarks and provenance marks that AI tools leave on what they generate: the invisible Unicode characters hidden in text, and the C2PA, EXIF, XMP and ID3 metadata carried inside image, audio and video files. It runs in your browser, so nothing is uploaded.</p>
-        <div class="intro-cards">
-          <div class="intro-card">
-            <h2 class="intro-card-title"><span class="intro-card-icon" aria-hidden="true">🧽</span><span data-i18n="introRemovesTitle">What it removes</span></h2>
-            <p data-i18n="introRemovesBody">Invisible Unicode carriers in text (zero-width characters, variation selectors, homoglyph spaces), and container metadata in files: C2PA / Content Credentials, EXIF, XMP, PNG text chunks, ID3 tags. Pixels, samples and waveforms are never touched and nothing is re-encoded.</p>
-          </div>
-          <div class="intro-card intro-card-caveat">
-            <h2 class="intro-card-title"><span class="intro-card-icon" aria-hidden="true">⚠️</span><span data-i18n="introLimitsTitle">What it cannot remove</span></h2>
-            <p data-i18n="introLimitsBody">Statistical watermarks (SynthID-Text, KGW, keyed-Gumbel) live in how tokens were sampled, and pixel-domain watermarks live in the image itself. Neither is a character or a metadata field, so stripping those does not remove them. The Inspector tab tests for them separately and says so plainly.</p>
-          </div>
-          <div class="intro-card">
-            <h2 class="intro-card-title"><span class="intro-card-icon" aria-hidden="true">🔍</span><span data-i18n="introHowTitle">How to trust it</span></h2>
-            <p data-i18n="introHowBody">The engines are a faithful JavaScript port of the upstream watermarks-remover Python service, held to byte-for-byte parity tests on every change. No uploads, no analytics, no third-party requests. Open source, MIT.</p>
-          </div>
-        </div>
-      </section>
-
       <div class="privacy-banner" role="status">
         <div class="privacy-text">
           <span aria-hidden="true">🔒</span>
@@ -259,6 +241,24 @@
           <p class="footnote rewrite-hint" id="stat-hint" data-i18n="statDisabledHint"></p>
         </div>
       </div>
+      <section class="intro" aria-labelledby="intro-title">
+        <h2 class="intro-title" id="intro-title" data-i18n="introTitle">About Unmark</h2>
+        <p class="intro-lead" data-i18n="introLead">Unmark removes the digital watermarks and provenance marks that AI tools leave on what they generate: the invisible Unicode characters hidden in text, and the C2PA, EXIF, XMP and ID3 metadata carried inside image, audio and video files. It runs in your browser, so nothing is uploaded.</p>
+        <div class="intro-cards">
+          <div class="intro-card">
+            <h3 class="intro-card-title" data-i18n="introRemovesTitle">What it removes</h3>
+            <p data-i18n="introRemovesBody">Invisible Unicode carriers in text (zero-width characters, variation selectors, homoglyph spaces), and container metadata in files: C2PA / Content Credentials, EXIF, XMP, PNG text chunks, ID3 tags. Pixels, samples and waveforms are never touched and nothing is re-encoded.</p>
+          </div>
+          <div class="intro-card intro-card-caveat">
+            <h3 class="intro-card-title" data-i18n="introLimitsTitle">What it cannot remove</h3>
+            <p data-i18n="introLimitsBody">Statistical watermarks (SynthID-Text, KGW, keyed-Gumbel) live in how tokens were sampled, and pixel-domain watermarks live in the image itself. Neither is a character or a metadata field, so stripping those does not remove them. The Inspector tab tests for them separately and says so plainly.</p>
+          </div>
+          <div class="intro-card">
+            <h3 class="intro-card-title" data-i18n="introHowTitle">How to trust it</h3>
+            <p data-i18n="introHowBody">The engines are a faithful JavaScript port of the upstream watermarks-remover Python service, held to byte-for-byte parity tests on every change. No uploads, no analytics, no third-party requests. Open source, MIT.</p>
+          </div>
+        </div>
+      </section>
     </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite"><span id="toast-icon" aria-hidden="true">✅</span><span id="toast-msg"></span></div>

@@ -186,6 +186,11 @@ No build step, no dependencies at runtime. CSP: `default-src 'self'; connect-src
 
 Full notes on each [release](https://github.com/ivanusto/unmark-web/releases).
 
+### [v0.6.1](https://github.com/ivanusto/unmark-web/releases/tag/v0.6.1)
+
+- **The explanation moved below the tool.** v0.6.0 put it above, which pushed the textarea off the first screen: someone who came here to clean a file had to scroll past a description of the file to reach it. It now sits under the tab panels as an "About Unmark" section, separated by a rule, with the same three cards and the same weight on the caveat.
+- The three card icons are gone. The ochre rule on the caveat card carries the emphasis on its own.
+
 ### [v0.6.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.6.0)
 
 - **The page now says what the tool is for.** A visitor landing on the demo got a one-line tagline and a row of tabs. There is now a lead paragraph and three cards above the fold: what it removes, **what it cannot remove**, and why the output can be trusted. The middle card gets the same weight as the other two rather than being a footnote, because "the metadata is gone" and "the watermark is gone" are different claims and that difference is the whole reason the Inspector tab exists. Title, meta description and tagline lead with watermark removal instead of describing the file formats.
