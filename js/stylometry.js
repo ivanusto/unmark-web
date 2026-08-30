@@ -3,10 +3,13 @@
  *
  * Faithful JavaScript port of `service/scripts/score_stylometry.py` from
  * guillaumemeyer/watermarks-remover (MIT), upstream commit
- * 196ba9d168d3bdabd4fc7cba8e739f6e234cb6cc, file sha256
- * cd3dae134d5f641120218fd525afd523d4a0bfb52d4d73c0e92dc04e3bcc6d59, plus the
+ * ac1711f22c62fd3a5a17cab18f2d6dc480c03342, file sha256
+ * 57dcbd2cb1ec30a12d44ba47dac29998bf1f0f139703e0921b4642d83b0e774f, plus the
  * `classify_finding_confidence` helper from `service/scripts/common.py` that
- * `StylometryReport.to_dict()` calls. The marker table, sentence splitting,
+ * `StylometryReport.to_dict()` calls. That helper is the only thing mirrored
+ * from common.py; scripts/upstream-sources.json tracks just its slice of the
+ * file, because the rest of common.py is filesystem and subprocess plumbing
+ * that moves for reasons this port has no stake in. The marker table, sentence splitting,
  * sample (n-1) burstiness, Counter-based MATTR sliding window, sub-score
  * tiers, small-sample dampening, finding strings and 4-decimal rounding mirror
  * upstream so that `score(text).to_dict`-shaped output matches the Python
@@ -32,52 +35,24 @@
   const MIN_SAMPLE_WORDS = 30;
   const FULL_WEIGHT_WORDS = 100;
 
-  // (python_regex_pattern, human_label, weight) — verbatim from upstream.
+  /* (python_regex_pattern, human_label, weight) - verbatim from upstream. The
+   * second half of the table came in with upstream #258, folded in there from
+   * blader/humanizer (Wikipedia "Signs of AI writing") and
+   * conorbronsdon/avoid-ai-writing; the weights stay moderate on purpose,
+   * because this is a gauge and one hit should not dominate the composite. */
   const AI_PHRASE_PATTERNS = [
     ["\\bdelve(?:s|d)?\\s+into\\b", "delve into", 1.2],
     ["\\ba\\s+testament\\s+to\\b", "a testament to", 1.1],
     ["\\brich\\s+tapestry(?:\\s+of)?\\b", "rich tapestry", 1.3],
     ["\\bplays?\\s+a\\s+(?:pivotal|crucial|vital|key)\\s+role\\b", "plays a pivotal/crucial role", 1.0],
-    [
-      "\\bin\\s+(?:today'?s|the)\\s+(?:(?:fast-paced|ever-evolving|digital|rapidly\\s+changing)\\s+)*(?:world|landscape|era|environment)\\b",
-      "in today's fast-paced world/landscape",
-      1.4,
-    ],
-    [
-      "\\bit\\s+is\\s+(?:important|essential|crucial|worth\\s+noting)\\s+to\\s+(?:note|remember|consider|highlight)\\b",
-      "it is important/crucial to note",
-      0.9,
-    ],
-    [
-      "\\bnot\\s+only\\b[\\w\\s,]+\\bbut\\s+(?:also\\s+)?(?:serves\\s+to|acts\\s+as|highlights)\\b",
-      "not only ... but also serves to",
-      0.8,
-    ],
-    [
-      "\\bserve(?:s|d)?\\s+as\\s+a\\s+(?:beacon|reminder|catalyst|cornerstone)\\b",
-      "serves as a beacon/catalyst/cornerstone",
-      1.1,
-    ],
-    [
-      "\\bunderscore(?:s|d)?\\s+the\\s+(?:importance|need|significance)\\b",
-      "underscores the importance/need",
-      0.9,
-    ],
-    [
-      "\\bfoster(?:s|ing|ed)?\\s+a\\s+(?:sense|culture|deeper\\s+understanding)\\b",
-      "fosters a sense/culture",
-      0.9,
-    ],
-    [
-      "\\bseamlessly\\s+(?:integrates?|integrated|blends?|combine[sd]?)\\b",
-      "seamlessly integrates/blends",
-      1.0,
-    ],
-    [
-      "\\bnavigat(?:e|ing|es|ed)\\s+the\\s+(?:complexities|intricacies|nuances)\\b",
-      "navigating the complexities/nuances",
-      1.0,
-    ],
+    ["\\bin\\s+(?:today'?s|the)\\s+(?:(?:fast-paced|ever-evolving|digital|rapidly\\s+changing)\\s+)*(?:world|landscape|era|environment)\\b", "in today's fast-paced world/landscape", 1.4],
+    ["\\bit\\s+is\\s+(?:important|essential|crucial|worth\\s+noting)\\s+to\\s+(?:note|remember|consider|highlight)\\b", "it is important/crucial to note", 0.9],
+    ["\\bnot\\s+only\\b[\\w\\s,]+\\bbut\\s+(?:also\\s+)?(?:serves\\s+to|acts\\s+as|highlights)\\b", "not only ... but also serves to", 0.8],
+    ["\\bserve(?:s|d)?\\s+as\\s+a\\s+(?:beacon|reminder|catalyst|cornerstone)\\b", "serves as a beacon/catalyst/cornerstone", 1.1],
+    ["\\bunderscore(?:s|d)?\\s+the\\s+(?:importance|need|significance)\\b", "underscores the importance/need", 0.9],
+    ["\\bfoster(?:s|ing|ed)?\\s+a\\s+(?:sense|culture|deeper\\s+understanding)\\b", "fosters a sense/culture", 0.9],
+    ["\\bseamlessly\\s+(?:integrates?|integrated|blends?|combine[sd]?)\\b", "seamlessly integrates/blends", 1.0],
+    ["\\bnavigat(?:e|ing|es|ed)\\s+the\\s+(?:complexities|intricacies|nuances)\\b", "navigating the complexities/nuances", 1.0],
     ["\\bmultifaceted\\s+(?:nature|approach|landscape)\\b", "multifaceted nature/approach", 1.0],
     ["\\bharness(?:ing|ed|es)?\\s+the\\s+power\\s+of\\b", "harnessing the power of", 1.0],
     ["\\ba\\s+myriad\\s+of\\b", "a myriad of", 0.8],
@@ -90,6 +65,26 @@
     ["\\bmoreover\\b[,\\s]", "moreover,", 0.6],
     ["\\bas\\s+an\\s+ai\\b", "as an AI", 1.5],
     ["\\bi\\s+hope\\s+this\\s+helps\\b", "I hope this helps", 1.2],
+    ["\\bstands?\\s+as\\s+a\\s+testament\\b", "stands as a testament to", 1.1],
+    ["\\bmark(?:s|ing)?\\s+an?\\s+(?:indelible|pivotal|significant|new)\\s+(?:moment|chapter|milestone)\\b", "marking a pivotal moment/chapter", 1.0],
+    ["\\b(?:reflecting|symbolizing|showcasing|underscoring)\\s+(?:the|a|its)\\b", "shallow -ing analysis (reflecting/symbolizing/showcasing)", 0.9],
+    ["\\b(?:nestled|vibrant|breathtaking)\\b", "sales language (nestled/vibrant)", 0.8],
+    ["\\b(?:game[- ]changer|game-changing)\\b", "game-changer", 0.9],
+    ["\\b(?:unparalleled|unprecedented)\\b", "unparalleled/unprecedented", 0.7],
+    ["\\b(?:world-class|state-of-the-art|cutting-edge)\\b", "world-class/state-of-the-art", 0.8],
+    ["\\b(?:revolutionary|groundbreaking)\\b", "revolutionary/groundbreaking", 0.6],
+    ["\\b(?:leverag(?:e|ing|ed|es)|utiliz(?:e|ing|ed|es))\\b", "leverage/utilize", 0.8],
+    ["\\bboasts?\\b", "boasts (copula avoidance)", 0.6],
+    ["\\bit['\\u2019]?s\\s+not\\s+just\\b", "it's not just X, it's Y", 0.8],
+    ["\\b(?:not\\s+just\\b.{0,60}\\bbut\\s+also\\b)", "not just X but also Y", 0.8],
+    ["\\bdive(?:s|d)?\\s+into\\b", "dive into", 0.7],
+    ["\\blet['\\u2019]?s\\s+(?:dive\\s+in|get\\s+started)\\b", "let's dive in", 0.7],
+    ["\\bin\\s+order\\s+to\\b", "in order to", 0.6],
+    ["\\bdue\\s+to\\s+the\\s+fact\\s+that\\b", "due to the fact that", 0.8],
+    ["\\bit(?:['\\u2019]s| is)\\s+worth\\s+noting\\s+that\\b", "it is worth noting that", 0.8],
+    ["\\b(?:needless\\s+to\\s+say|it\\s+goes\\s+without\\s+saying)\\b", "needless to say", 0.8],
+    ["\\bthe\\s+future\\s+looks\\s+bright\\b", "the future looks bright", 0.9],
+    ["\\b(?:sure\\s+thing!?|great\\s+question!?|happy\\s+to\\s+help)\\b", "assistant chatter (sure thing/great question)", 0.6],
   ];
 
   // ---- Python `re` / str emulation -------------------------------------
@@ -207,6 +202,11 @@
 
   function classifyFindingConfidence(finding) {
     const t = finding.toLowerCase();
+    /* Upstream #273: Layer A space homoglyphs are weaker context than invisible
+     * carriers, and the text path already says so. Container formats are
+     * classified here instead, so without this the very same non-breaking space
+     * reads "informational" in a .txt and "probable" in a .md. */
+    if (t.startsWith("layer-a") && t.endsWith("(space)")) return "informational";
     if (CONFIRMED.some((s) => t.includes(s))) return "confirmed";
     if (t.startsWith("info:") || INFORMATIONAL.some((s) => t.includes(s))) return "informational";
     if (t.includes("byte-scan")) return "likely_false_positive";
@@ -289,17 +289,62 @@
     return totalTtr / numWindows;
   }
 
+  /* Python's match offsets count code points; a JS string index counts UTF-16
+   * code units, so one astral character anywhere before a match (an emoji, a
+   * CJK extension ideograph) would shift every span after it. Build a lookup
+   * only when the text actually holds a surrogate pair. */
+  function codePointIndexer(text) {
+    let astral = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text.charCodeAt(i);
+      if (c >= 0xd800 && c <= 0xdbff) { astral = true; break; }
+    }
+    if (!astral) return (i) => i;
+    const prefix = new Int32Array(text.length + 1);
+    let cp = 0;
+    for (let i = 0; i < text.length; i++) {
+      prefix[i] = cp;
+      const c = text.charCodeAt(i);
+      if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
+        const d = text.charCodeAt(i + 1);
+        if (d >= 0xdc00 && d <= 0xdfff) { i++; prefix[i] = cp; }
+      }
+      cp++;
+    }
+    prefix[text.length] = cp;
+    return (i) => prefix[i];
+  }
+
   function scanAiPhrases(text) {
     const matches = [];
+    const toCp = codePointIndexer(text);
     for (const mk of MARKERS) {
       const found = [];
+      const offsets = [];
       mk.regex.lastIndex = 0;
-      for (const m of text.matchAll(mk.regex)) found.push(m[0]);
+      for (const m of text.matchAll(mk.regex)) {
+        found.push(m[0]);
+        offsets.push([toCp(m.index), toCp(m.index + m[0].length)]);
+      }
       if (found.length) {
-        matches.push({ phrase: mk.label, count: found.length, weight: mk.weight, samples: found.slice(0, 3) });
+        matches.push({
+          phrase: mk.label, count: found.length, weight: mk.weight,
+          samples: found.slice(0, 3), spans: offsets.slice(0, 10),
+        });
       }
     }
     return matches;
+  }
+
+  /* Map a composite score to an edit-decision tier. `high` means the text sits
+   * at or above the suspicious threshold; `medium`/`low` mean the measurable
+   * signals are weaker. `uncalibrated` is returned for samples too short to
+   * score at all. */
+  function classifyDensity(scoreValue) {
+    if (scoreValue === null) return "uncalibrated";
+    if (scoreValue >= DEFAULT_THRESHOLD) return "high";
+    if (scoreValue >= 0.40) return "medium";
+    return "low";
   }
 
   function toDict(r) {
@@ -311,8 +356,9 @@
       lexical_diversity: pyRound(r.lexical_diversity, 4),
       ai_ngram_density: pyRound(r.ai_ngram_density, 4),
       matched_markers: r.matched_markers,
-      score: pyRound(r.score, 4),
+      score: r.score !== null ? pyRound(r.score, 4) : null,
       confidence_level: r.confidence_level,
+      density_tier: r.density_tier,
       status: r.status,
       findings: r.findings,
       findings_confidence: r.findings.map(classifyFindingConfidence),
@@ -337,13 +383,16 @@
       const markerMatches = scanAiPhrases(text);
       for (const m of markerMatches) findings.push(`AI phrase marker '${m.phrase}' found (${m.count}x)`);
       notes.push(
-        `Sample contains ${wordCount} words; statistical stylometry is uncalibrated below ${MIN_SAMPLE_WORDS} words`
+        `Sample contains ${wordCount} words; statistical stylometry is uncalibrated below ${MIN_SAMPLE_WORDS} words, so no score is reported`
       );
+      /* Upstream #258 stopped reporting 0.0/CLEAN here. Saying a sample is
+       * clean is a claim; below the calibration floor there is nothing to base
+       * it on, so score and confidence are absent and only the tier is set. */
       return toDict({
         path, word_count: wordCount, sentence_count: sentenceCount, burstiness_cv: null,
         lexical_diversity: computeMattr(words), ai_ngram_density: 0.0,
-        matched_markers: markerMatches, score: 0.0, confidence_level: "CLEAN",
-        status: "insufficient_length", findings, notes,
+        matched_markers: markerMatches, score: null, confidence_level: null,
+        density_tier: "uncalibrated", status: "insufficient_length", findings, notes,
       });
     }
 
@@ -414,7 +463,8 @@
     return toDict({
       path, word_count: wordCount, sentence_count: sentenceCount, burstiness_cv: cv,
       lexical_diversity: mattr, ai_ngram_density: ngramDensity, matched_markers: markerMatches,
-      score: finalScore, confidence_level: confidence, status: "ok", findings, notes,
+      score: finalScore, confidence_level: confidence,
+      density_tier: classifyDensity(finalScore), status: "ok", findings, notes,
     });
   }
 
@@ -425,6 +475,7 @@
     computeBurstiness,
     computeMattr,
     scanAiPhrases,
+    classifyDensity,
     classifyFindingConfidence,
     translatePyPattern,
     pyFixed,

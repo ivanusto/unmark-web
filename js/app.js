@@ -303,7 +303,12 @@
     const parts = [];
     if (typeof r.score === "number") parts.push((Number.isInteger(r.score) ? String(r.score) : r.score.toFixed(3)) + (typeof r.threshold === "number" ? ` / ${r.threshold.toFixed(3)}` : ""));
     if (typeof r.confidence === "number" && !Number.isInteger(r.score)) parts.push(`p=${r.confidence.toFixed(3)}`);
-    return parts.length ? parts.join(" · ") : "—";
+    if (parts.length) return parts.join(" · ");
+    /* A stylometry row below the calibration floor has no score on purpose
+     * (upstream #258). A bare dash reads as "nothing to report"; say instead
+     * that the sample was too short to measure. */
+    if (r.meta && r.meta.density_tier === "uncalibrated") return t("inspect.scoreUncalibrated");
+    return "—";
   }
   function noteText(r) {
     if (!r) return "";

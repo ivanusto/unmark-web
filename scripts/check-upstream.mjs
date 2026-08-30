@@ -23,6 +23,33 @@ const TIMEOUT_MS = 20000;
 
 const sha256 = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
 
+/**
+ * Narrow a fetched file to the one definition this project actually mirrors.
+ *
+ * Some sources are ported wholesale; `service/scripts/common.py` is not. Only
+ * `classify_finding_confidence` has a counterpart here, and the rest of that
+ * file is filesystem and subprocess plumbing that moves for reasons this port
+ * has no stake in. Hashing the whole file would open a drift issue every time
+ * upstream touched any of it, and an issue that is usually noise is an issue
+ * nobody reads.
+ *
+ * `from` matches the first line of the definition; the slice runs to the line
+ * before the next one matching `until` (by default the next top-level
+ * statement, i.e. the next line starting in column zero).
+ */
+function sliceSource(text, id, { from, until = '^\\S' }) {
+  const lines = text.split('\n');
+  const fromRe = new RegExp(from);
+  const untilRe = new RegExp(until);
+  const start = lines.findIndex((l) => fromRe.test(l));
+  if (start === -1) throw new Error(`slice anchor ${from} not found in ${id} (did upstream rename it?)`);
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (untilRe.test(lines[i])) { end = i; break; }
+  }
+  return lines.slice(start, end).join('\n');
+}
+
 async function fetchText(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -53,7 +80,7 @@ async function main() {
   for (const source of manifest.sources) {
     try {
       const body = await fetchText(source.url);
-      const actual = sha256(body);
+      const actual = sha256(source.slice ? sliceSource(body, source.id, source.slice) : body);
       results.push({ ...source, actual, changed: actual !== source.sha256 });
     } catch (e) {
       unreachable++;
@@ -63,7 +90,8 @@ async function main() {
 
   for (const r of results) {
     const mark = r.error ? '??' : r.changed ? 'CHANGED' : 'ok';
-    console.log(`${mark.padEnd(8)} ${r.id}${r.error ? `  (${r.error})` : ''}`);
+    const scope = r.slice ? '  (slice)' : '';
+    console.log(`${mark.padEnd(8)} ${r.id}${scope}${r.error ? `  (${r.error})` : ''}`);
     if (r.changed) {
       console.log(`         recorded ${r.sha256}`);
       console.log(`         actual   ${r.actual}`);
@@ -90,7 +118,9 @@ async function main() {
     '| Source | Recorded | Now | History |',
     '| --- | --- | --- | --- |',
     ...changed.map(
-      (r) => `| \`${r.id}\` | \`${r.sha256.slice(0, 12)}\` | \`${r.actual.slice(0, 12)}\` | [commits](${r.history}) |`
+      (r) =>
+        `| \`${r.id}\`${r.slice ? ' *(one definition only)*' : ''} | \`${r.sha256.slice(0, 12)}\` | ` +
+        `\`${r.actual.slice(0, 12)}\` | [commits](${r.history}) |`
     ),
     '',
     '**Files in this repository that mirror the changed sources:**',

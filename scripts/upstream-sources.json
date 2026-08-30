@@ -1,6 +1,6 @@
 {
-  "note": "The Python modules js/layer_a.js, js/image_meta.js, js/av_meta.js, js/stylometry.js and js/gumbel.js were ported from. scripts/check-upstream.mjs compares the live content against these hashes. The parity suite proves the ported behaviour still matches for the cases it covers; this catches the rest: new options, new formats, anything the fixtures do not exercise. When one moves, re-port it and update `sha256` in the same commit.",
-  "followUp": "If the parity suite is still green, the change is probably additive \u2014 a new format or option the fixtures do not reach. Add fixtures covering it, or the gap stays invisible the next time too.",
+  "note": "The Python modules js/layer_a.js, js/image_meta.js, js/av_meta.js, js/stylometry.js and js/gumbel.js were ported from the upstream sources listed below. scripts/check-upstream.mjs compares the live content against these hashes. The parity suite proves the ported behaviour still matches for the cases it covers; this catches the rest: new options, new formats, anything the fixtures do not exercise. When one moves, re-port it and update `sha256` in the same commit.",
+  "followUp": "If the parity suite is still green, the change is probably additive: a new format or option the fixtures do not reach. Add fixtures covering it, or the gap stays invisible the next time too.",
   "sources": [
     {
       "id": "watermarks-remover/service/scripts/text_unicode.py",
@@ -38,11 +38,12 @@
       "id": "watermarks-remover/service/scripts/score_stylometry.py",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/score_stylometry.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/score_stylometry.py",
-      "sha256": "cd3dae134d5f641120218fd525afd523d4a0bfb52d4d73c0e92dc04e3bcc6d59",
+      "sha256": "57dcbd2cb1ec30a12d44ba47dac29998bf1f0f139703e0921b4642d83b0e774f",
       "mirrors": [
         "js/stylometry.js",
         "tests/test_stylometry_parity.py"
-      ]
+      ],
+      "comment": "Ported in full apart from the command-line surface: print_human_stylometry_report and main() have no counterpart in a page, and score() returns the to_dict shape directly. Since upstream #258 a sample below MIN_SAMPLE_WORDS reports score and confidence_level as null rather than 0.0/CLEAN, and every report carries density_tier; matched markers carry spans as code-point offsets, which is why js/stylometry.js maps UTF-16 string indices back to code points before recording them."
     },
     {
       "id": "watermarks-remover/service/scripts/detect_gumbel.py",
@@ -53,6 +54,20 @@
         "js/gumbel.js",
         "tests/test_gumbel_parity.py"
       ]
+    },
+    {
+      "id": "watermarks-remover/service/scripts/common.py",
+      "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/common.py",
+      "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/common.py",
+      "sha256": "5cc5976c07f86d6953bdb2082540cbda04f13ff193bad6fed025762e870001ab",
+      "slice": {
+        "from": "^def classify_finding_confidence\\("
+      },
+      "mirrors": [
+        "js/stylometry.js",
+        "tests/test_finding_confidence_parity.py"
+      ],
+      "comment": "Tracked as one definition, not as a file. classify_finding_confidence is the only thing js/stylometry.js mirrors from common.py, because StylometryReport.to_dict() calls it; the rest of common.py is filesystem and subprocess plumbing with no browser counterpart (read_text_input, backup_path, safe_write_bytes, the tool probes). Hashing the whole file would open a drift issue every time upstream touched any of that, and an issue that is usually noise is an issue nobody reads. Added after upstream #273 changed this function, classifying Layer A space homoglyphs as informational, and nothing here noticed."
     }
   ]
 }
