@@ -182,7 +182,7 @@ node scripts/check-upstream.mjs                                                 
 
 各版完整說明見 [releases](https://github.com/ivanusto/unmark-web/releases)。
 
-### Unreleased
+### [v0.6.2](https://github.com/ivanusto/unmark-web/releases/tag/v0.6.2)
 
 - **PNG 文字區塊不再能無上限解壓**。[guillaumemeyer/watermarks-remover#308](https://github.com/guillaumemeyer/watermarks-remover/pull/308) 把解壓後的 `zTXt`／`iTXt` 內容上限訂在 1 MiB：PNG 的文字欄位是中繼資料，不是文件，而幾百 KB 精心構造的 deflate 可以膨脹成幾百 MB，接著標記掃描還會把它再複製一份。這種區塊現在由 `inspectPng` 回報為「未完整檢查」，而不是安靜地從檢測結果裡消失；`stripPng` 連「保留非 AI 中繼資料」模式都會把它移除，因為沒人讀得完的區塊，也沒人能替它背書。同一個改動也讓 deflate 串流中途斷掉的文字區塊被掃描到它解得出來的地方為止，而不是整塊丟掉。
 - **截斷的 ID3v2 標籤會被回報，而且音訊留得住**。[guillaumemeyer/watermarks-remover#201](https://github.com/guillaumemeyer/watermarks-remover/pull/201)：MP3 的 ID3v2 標頭宣告的標籤長度超過檔案實際內容時，舊路徑會整個穿過去，把一個從頭到尾沒讀完的檔案回報成乾淨。現在它會被回報為截斷，連同殘存位元組裡找得到的標記；清理則把讀不懂的標籤丟到第一個有效的 MPEG frame 標頭為止（除了 sync word，還要檢查版本、layer、位元率、取樣率與 emphasis，因為看起來像 sync word 的兩個位元組不等於一個音訊 frame）。整個檔案裡找不到這種標頭時原封不動保留，而不是被清空。兩個 driver 都帶著它，slice driver 以重疊分塊掃描找出 frame 標頭，不把檔案讀進記憶體。
