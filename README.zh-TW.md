@@ -27,10 +27,10 @@
 | --- | --- | --- |
 | 貼上的文字 / `.txt` | Layer A：零寬與 bidi 控制字元、變體選擇符、tag 字元、PUA、Unicode 非字元、保留的預設可忽略字元、其他 `Cf`；空白同形字；可選的 NFKC／拉丁易混字元處理。與上游一致地保留具功能性的隱形字元（emoji 的 ZWJ/VS16、波斯文／印度系文字的 ZWNJ、旗幟 tag、蒙古文 FVS、高棉文母音、諺文填充字元、阿拉伯文 `Cf`，以及緊鄰自身書寫系統的排版控制字元：埃及聖書體象限、Duployan 速記、音樂符號連桿），並提供「偏執模式」開關。 | 同左 |
 | `.md` `.html` `.svg` | 僅對文字內容套用 Layer A（中繼資料標籤／frontmatter 不動，UI 會標示） | 完整容器清理（frontmatter 鍵、`<meta generator>`、XMP……） |
-| PNG / JPEG / WebP / AVIF / HEIC | 移除 `tEXt/zTXt/iTXt/eXIf/caBX/c2*` 區塊、`APPn`（JFIF 除外）與 `COM` 區段、`EXIF/XMP/ICCP/C2PA` RIFF 區塊並修正 VP8X 旗標，以及 ISOBMFF 的 `jumb/c2pa/uuid`（XMP）盒與其 `meta` 子盒。像素不動（不經 canvas 重新編碼）。「保留非 AI 中繼資料」模式只移除帶有 AI／C2PA 跡象的區塊。 | 同左，若有安裝則額外提供像素域後端 |
+| PNG / JPEG / WebP / AVIF / HEIC | 移除 `tEXt/zTXt/iTXt/eXIf/caBX/c2*` 區塊、`APPn`（JFIF 除外）與 `COM` 區段、`EXIF/XMP/ICCP/C2PA` RIFF 區塊並修正 VP8X 旗標，以及 ISOBMFF 的 `jumb/c2pa/uuid` 盒與其 `meta` 子盒，涵蓋 XMP 的 user type 與 C2PA 來源標記的 user type `d8fec3d6-…`。像素不動（不經 canvas 重新編碼）。「保留非 AI 中繼資料」模式只移除帶有 AI／C2PA 跡象的區塊。 | 同左，若有安裝則額外提供像素域後端 |
 | BMP / GIF / TIFF | BMP：移除像素資料之後的尾端位元組（BMP 中繼資料唯一可能存在的位置）並改寫檔案大小欄位。GIF：移除註解與 XMP／未知的 application extension，保留 NETSCAPE2.0 循環與 ICC。TIFF（classic 與 BigTIFF）：走訪 IFD 鏈並移除 XMP／EXIF／GPS／IPTC／Photoshop／MakerNote 標籤，逐一原地修補 IFD，讓 strip 與 tile 的 offset 保持有效。 | 同左 |
 | PDF / DOCX / ODT / EPUB | 不支援（需要伺服器） | 支援 |
-| MP4／MOV／M4A／M4V／WAV／MP3／FLAC | 移除 MP4 與 AVIF／HEIC 共用的 `jumb`／`c2pa`／`uuid`（XMP）ISOBMFF 盒，以及 `moov/udta` 的生成器標籤；WAV 的 `C2PA`、`LIST INFO`、`id3 ` chunk；MP3 的 ID3v2 frame；FLAC 裡 C2PA 的 `GEOB application/c2pa` frame。取樣與影格完全不動。透過 `File.slice()` 讀取，長片與短片耗用的記憶體一樣多。 | 同上 |
+| MP4／MOV／M4A／M4V／WAV／MP3／FLAC | 移除 MP4 與 AVIF／HEIC 共用的 `jumb`／`c2pa`／`uuid` ISOBMFF 盒，以及 `moov/udta` 的生成器標籤；WAV 的 `C2PA`、`LIST INFO`、`id3 ` chunk；MP3 的 ID3v2 frame；FLAC 裡 C2PA 的 `GEOB application/c2pa` frame。取樣與影格完全不動。透過 `File.slice()` 讀取，長片與短片耗用的記憶體一樣多。 | 同上 |
 | 統計式文字浮水印（Kirchenbauer／KGW、SynthID-Text） | **只偵測**，透過選用的本機 [sidecar](sidecar/README.md)（需要模型與生成端的 key）；不移除，改寫請見上游 Layer B | 伺服器宣告文字偵測器時走上游 `/detect`（MarkLLM harness） |
 | 像素式浮水印（SynthID image 等） | **不支援** | 僅能透過上游後端 |
 
@@ -164,22 +164,50 @@ node scripts/check-upstream.mjs                                                 
 
 - `js/layer_a.js`，`text_unicode.py` 的移植（`clean`、`inspect`、`decide`）
 - `js/image_meta.js`，`image_meta.py` 的移植（PNG/JPEG/WebP/AVIF/HEIC/BMP/GIF/TIFF 檢查與清除）
+- `js/av_meta.js`，`av_meta.py` 的移植（MP4／MOV／M4A／M4V、WAV、MP3、FLAC 的檢查與清除；MP4 沿用 AVIF 與 HEIC 已經在用的 ISOBMFF box walker）
 - `js/stylometry.js`，`score_stylometry.py` 的移植（burstiness／MATTR／AI 片語密度；啟發式，不是浮水印偵測器）
 - `js/gumbel.js`，`detect_gumbel.py` 的移植（keyed-Gumbel／EXP 同金鑰重放，自帶同步版 SHA-256 與 HMAC，因此不需要 `crypto.subtle`，也不需要 secure context）
 - `js/detectors.js`，檢測器的偵測器註冊表：字元、中繼資料、統計三層共用一種結果契約，加上給總結與前後對照用的 `summarize()`／`compare()`
 - `js/api.js`，`/health /capabilities /inspect /clean /detect` 的客戶端，以及選用的 `/llm-config`＋`/llm` 改寫呼叫與 `/stat-config`＋`/stat` sidecar 呼叫
 - `js/i18n.js`、`js/app.js`、`css/app.css`、`index.html`，UI（英文／繁體中文／簡體中文、淺色／深色、支援鍵盤操作）。語系依 `navigator.languages` 判斷並記在 `localStorage`；新增語言只需在 `js/i18n.js` 的 `LANGS` 加一列、再加一本字典。
-- `tests/test_layer_a_parity.py`、`tests/test_image_meta_parity.py`、`tests/test_stylometry_parity.py`、`tests/test_gumbel_parity.py`，與上游 checkout 的跨引擎 parity 測試（缺少 `node` 或該 checkout 時會跳過）
+- `tests/test_layer_a_parity.py`、`tests/test_image_meta_parity.py`、`tests/test_av_meta_parity.py`、`tests/test_stylometry_parity.py`、`tests/test_gumbel_parity.py`、`tests/test_contains_any_parity.py`、`tests/test_c2pa_prov_scan_parity.py`、`tests/test_finding_confidence_parity.py`，與上游 checkout 的跨引擎 parity 測試（缺少 `node` 或該 checkout 時會跳過，所以整套測試要用 `-rs` 跑）
 - `tests/test_i18n_keys.py`，三個語系必須有相同的字串鍵，且 `index.html` 裡每個 `data-i18n` 都解得開。這種缺口在執行期看不出來，因為 `t()` 會靜靜 fallback。
 - `serve_local.py`，同源靜態伺服器 + `/api` 代理、選用的 `/llm` 改寫代理，以及選用的 `/stat` sidecar 代理
 - `sidecar/`，統計型偵測器 sidecar（有自己的 `requirements.txt`；永遠不是頁面的一部分）
-- `scripts/check-upstream.mjs`，以 `node scripts/check-upstream.mjs` 執行；以 `scripts/upstream-sources.json` 記錄的雜湊比對上游 Python 模組；`.github/workflows/upstream-check.yml` 每天執行它與 parity 測試，任一訊號觸發就開 issue。parity 抓行為改變，雜湊抓測試涵蓋不到的變動（例如上游新增了一種格式）。
+- `scripts/check-upstream.mjs`，以 `node scripts/check-upstream.mjs` 執行；以 `scripts/upstream-sources.json` 記錄的雜湊比對上游 Python 模組（只移植了一部分的模組，可以在來源上加 `slice`，改成追蹤單一定義而非整個檔案）；`.github/workflows/upstream-check.yml` 每天執行它與 parity 測試，任一訊號觸發就開 issue。parity 抓行為改變，雜湊抓測試涵蓋不到的變動（例如上游新增了一種格式）。
 
 沒有建置步驟，執行期零相依。CSP：`default-src 'self'; connect-src *`（後者是為了讓你能指向自己的伺服器）。
 
 ## 版本紀錄
 
 各版完整說明見 [releases](https://github.com/ivanusto/unmark-web/releases)。
+
+### Unreleased
+
+- **PNG 文字區塊不再能無上限解壓**。[guillaumemeyer/watermarks-remover#308](https://github.com/guillaumemeyer/watermarks-remover/pull/308) 把解壓後的 `zTXt`／`iTXt` 內容上限訂在 1 MiB：PNG 的文字欄位是中繼資料，不是文件，而幾百 KB 精心構造的 deflate 可以膨脹成幾百 MB，接著標記掃描還會把它再複製一份。這種區塊現在由 `inspectPng` 回報為「未完整檢查」，而不是安靜地從檢測結果裡消失；`stripPng` 連「保留非 AI 中繼資料」模式都會把它移除，因為沒人讀得完的區塊，也沒人能替它背書。同一個改動也讓 deflate 串流中途斷掉的文字區塊被掃描到它解得出來的地方為止，而不是整塊丟掉。
+- **截斷的 ID3v2 標籤會被回報，而且音訊留得住**。[guillaumemeyer/watermarks-remover#201](https://github.com/guillaumemeyer/watermarks-remover/pull/201)：MP3 的 ID3v2 標頭宣告的標籤長度超過檔案實際內容時，舊路徑會整個穿過去，把一個從頭到尾沒讀完的檔案回報成乾淨。現在它會被回報為截斷，連同殘存位元組裡找得到的標記；清理則把讀不懂的標籤丟到第一個有效的 MPEG frame 標頭為止（除了 sync word，還要檢查版本、layer、位元率、取樣率與 emphasis，因為看起來像 sync word 的兩個位元組不等於一個音訊 frame）。整個檔案裡找不到這種標頭時原封不動保留，而不是被清空。兩個 driver 都帶著它，slice driver 以重疊分塊掃描找出 frame 標頭，不把檔案讀進記憶體。
+- 新的 parity 錨點：`image_meta.py` `bd5d9f19f370`、`av_meta.py` `f012ed17276c`。
+
+### [v0.6.1](https://github.com/ivanusto/unmark-web/releases/tag/v0.6.1)
+
+- **說明文字移到工具下方**。v0.6.0 把它放在上面，結果把輸入框擠出第一屏：來清檔案的人得先捲過一段描述這個檔案的文字，才碰得到它。現在它以「關於 Unmark」的形式放在分頁面板下方，中間隔一條分隔線，三張卡片與對警語的份量都不變。
+- 三張卡片的圖示拿掉了。警語卡片上緣那條赭色線自己就撐得起強調。
+
+### [v0.6.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.6.0)
+
+- **頁面現在會說明自己是做什麼的**。以前來到示範頁的人只看到一行副標和一排分頁，其餘全靠自己推敲。現在第一屏有一段引言與三張卡片：它移除什麼、**它移除不了什麼**、以及為什麼輸出可以被信任。中間那張卡片的份量與另外兩張相同，不是附註，因為「中繼資料沒了」與「浮水印沒了」是兩種不同的主張，而這個差別正是「檢測器」分頁存在的全部理由。標題、meta 描述與副標都改成以移除浮水印開頭，而不是列出支援的檔案格式。
+- **Morandi 配色，淺色與深色皆備**。低彩度、偏灰的色相落在暖中性底色上：尤加利綠作為主色，鼠尾草綠、赭黃與褪色赤陶負責狀態，頁面底色是未漂亞麻或暖炭黑。所有顏色現在都來自 token，包括原本散落在樣式表各處、直接寫死的十三個顏色。
+- **配色的無障礙宣稱是測出來的，不是講出來的**。`tests/test_theme_contrast.py` 會從 `css/app.css` 解出 token，在兩種主題下檢查每一個文字與標籤顏色，對上它可能落在的每一種底色都要通過 WCAG AA（4.5:1），半透明的卡片底色會先疊在頁面底色上再算。淺色主題若漏了覆寫某個顏色 token 也會失敗，否則深色的值會安靜地留在淺色底上。
+- 副標在 560px 以下隱藏，那裡它會折成五行，把頁首控制項擠出同一列。
+
+### [v0.5.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.5.0)
+
+- **AVIF、HEIC、MP4、MOV 裡的 C2PA manifest 改以 user type 辨識，不再靠字串比對**。C2PA 在 BMFF 容器裡是把 manifest 放進一個 user type 為 `d8fec3d6-1b0e-483c-9297-5828877ec481` 的頂層 `uuid` 盒，而不是放進 `c2pa` 盒。本移植原本只特判 XMP 的 user type，其餘靠在 payload 裡找 ASCII 的 `c2pa`／`jumb`，所以兩者都沒有的 manifest（附屬的 `merkle` 盒、二進位 manifest store）在全清模式下是碰運氣抓到，在「保留非 AI 中繼資料」模式下則完全漏掉。移植自上游 #264，等長 `free` 盒的取代方式不變，清理後的檔案長度與媒體 offset 依舊不動。
+- **文風統計不再替量不到的樣本打分數**。低於 30 字的校準下限時，分數與信心等級是「沒有」，而不是 `0.0`／`CLEAN`，檢測器會說樣本太短，而不是顯示一個破折號。每份報告另外帶一個 `density_tier`，標記表也多了二十條樣式。移植自上游 #258。
+- **Layer A 的空白同形字屬於資訊性，不是「可能」**（上游 #273），改在本移植從上游 `common.py` 鏡射的信心分級輔助函式裡。
+- **漂移檢查現在能追蹤單一定義**。`common.py` 沒有整份移植，只有 `classify_finding_confidence`，所以對整個檔案取雜湊等於上游每動它一次就開一張 issue。`scripts/upstream-sources.json` 的來源現在可以帶 `slice`，`common.py` 就是這樣追蹤的。在此之前，#273 那次改動在這裡是看不見的。
+- **CI 一直在替別人的測試打分數**。`pytest -q` 是從 repo 根目錄跑的，而 workflow 也會在那裡 checkout `upstream/`，所以本專案的結論裡混進了上游自己的測試。兩個 workflow 現在都跑 `pytest tests/ -q -rs`；加 `-rs` 是因為 parity 檔案在找不到上游模組時會自己跳過，否則那是一次無聲的通過。
+- 新的 parity 錨點：`image_meta.py` `360da6bac49f`、`score_stylometry.py` `57dcbd2cb1ec`，以及以 slice 追蹤的 `common.py`。
 
 ### [v0.4.2](https://github.com/ivanusto/unmark-web/releases/tag/v0.4.2)
 
