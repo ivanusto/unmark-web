@@ -164,6 +164,52 @@
     return pos <= total ? pos : null;
   }
 
+  /* The tag header on its own: version and declared length, before anything is
+   * parsed. A tag whose declared length runs past the bytes that are there is
+   * truncated, which upstream #201 reports and works around rather than
+   * silently finding nothing. The footer is deliberately left out of `total`,
+   * as upstream's check is, so a tag missing only its footer still goes down
+   * the ordinary parse path and fails there. */
+  function id3v2Declared(head) {
+    if (head.length < 10 || latin1(head.subarray(0, 3)) !== "ID3") return null;
+    return { major: head[3], total: 10 + id3v2Size(head, 6) };
+  }
+
+  const isTruncatedId3v2 = (declared, size) => declared !== null && declared.total > size;
+
+  /** The inspect half of the truncated case, shared by both drivers. */
+  function truncatedId3v2Report({ major, total }, present, hits) {
+    const findings = [
+      // The em dash is upstream's: parity is on the finding string, so the
+      // punctuation this project drops from its own copy stays here.
+      `truncated ID3v2.${major} tag detected (${present} bytes present, ${total} declared) `
+      + "— metadata may be incomplete",
+    ];
+    if (hits.length) findings.push(`partial ID3v2.${major} tag markers: ${hits.slice(0, 8).join(", ")}`);
+    return { hasC2pa: classifyC2pa(hits), hasAi: hits.length > 0, findings };
+  }
+
+  /* An MPEG audio frame header: sync word, then version, layer, bitrate,
+   * sample rate and emphasis fields that all have reserved values. Checking
+   * them is what separates the start of the audio from two bytes that merely
+   * look like a sync word, which is the whole point of the scan below. */
+  function isValidMp3FrameHeader(u8, offset) {
+    if (offset + 4 > u8.length) return false;
+    const b1 = u8[offset + 1], b2 = u8[offset + 2];
+    if (u8[offset] !== 0xff || (b1 & 0xe0) !== 0xe0) return false;
+    if (((b1 >> 3) & 0x03) === 1 || ((b1 >> 1) & 0x03) === 0) return false;  // version 01, layer 00
+    const bitrate = (b2 >> 4) & 0x0f;
+    if (bitrate === 0x00 || bitrate === 0x0f) return false;                  // free, bad
+    if (((b2 >> 2) & 0x03) === 0x03) return false;                           // sample rate 11
+    return (u8[offset + 3] & 0x03) !== 0x02;                                 // emphasis 10
+  }
+
+  /** First offset at or after `start` that begins an audio frame, or -1. */
+  function findMp3FrameHeader(u8, start) {
+    for (let i = start; i + 4 <= u8.length; i++) if (isValidMp3FrameHeader(u8, i)) return i;
+    return -1;
+  }
+
   /**
    * Parse an ID3v2 tag at the start of u8 -> {total, major, frames} or null.
    * frames is empty for v2.2 (3-byte frame IDs), which is detected but never
@@ -202,6 +248,8 @@
   }
 
   function inspectId3v2(u8) {
+    const declared = id3v2Declared(u8);
+    if (isTruncatedId3v2(declared, u8.length)) return truncatedId3v2Report(declared, u8.length, hints(u8));
     const parsed = parseId3v2Frames(u8);
     if (parsed === null) return { hasC2pa: false, hasAi: false, findings: [] };
     const { total, major, frames } = parsed;
@@ -236,6 +284,19 @@
    */
   function stripId3v2Region(u8, { stripAllMetadata = true } = {}) {
     const unchanged = (actions) => ({ replacement: null, total: 0, actions });
+    const declared = id3v2Declared(u8);
+    if (isTruncatedId3v2(declared, u8.length)) {
+      /* The tag's frame boundaries are unknowable, so upstream #201 drops
+       * everything up to the first audio frame instead. A file with no frame
+       * to find is left exactly as it was rather than emptied. Keep mode makes
+       * no difference: a tag that cannot be read cannot be filtered. */
+      const audio = findMp3FrameHeader(u8, 10);
+      if (audio === -1) {
+        return unchanged([`cannot locate valid audio frame in truncated ID3v2.${declared.major} tag; preserving file`]);
+      }
+      return { replacement: EMPTY, total: audio,
+        actions: [`drop truncated ID3v2.${declared.major} tag (found audio frame at offset ${audio})`] };
+    }
     const parsed = parseId3v2Frames(u8);
     if (parsed === null) return unchanged([]);
     const { total, major, frames } = parsed;
@@ -633,6 +694,30 @@
     return inspectTag(region);
   }
 
+  /* MP3 only, and only for the truncated tag id3v2Region() cannot return: the
+   * marker scan then covers the whole file, the way the buffer driver's does.
+   * FLAC needs no counterpart, because a FLAC whose tag is truncated is
+   * detected as an MP3 in the first place: the fLaC magic sits after the tag,
+   * at an offset the truncated header no longer locates. */
+  async function inspectMp3File(file) {
+    const declared = id3v2Declared(await bytesOf(file, 0, ID3_HEADER));
+    if (!isTruncatedId3v2(declared, file.size)) return inspectTagFile(file, inspectId3v2);
+    return truncatedId3v2Report(declared, file.size, await containsAnyInFile(file, IM.AI_META_HINTS));
+  }
+
+  /** findMp3FrameHeader over a File: chunks overlap by the 3 bytes a header
+   * could straddle, and the scan stops at the first frame it finds. */
+  async function findMp3FrameHeaderInFile(file, chunkSize = SCAN_CHUNK) {
+    let pos = ID3_HEADER;
+    while (pos + 4 <= file.size) {
+      const end = Math.min(pos + chunkSize, file.size);
+      const found = findMp3FrameHeader(await bytesOf(file, pos, end + 3), 0);
+      if (found !== -1) return pos + found;
+      pos = end;
+    }
+    return -1;
+  }
+
   async function cleanTagFile(file, stripRegion, opts) {
     const region = await id3v2Region(file);
     if (region === null) {
@@ -642,6 +727,18 @@
     const r = stripRegion(region, opts);
     if (r.replacement === null) return { parts: [file.slice(0)], actions: r.actions };
     return { parts: [r.replacement, file.slice(r.total)], actions: r.actions };
+  }
+
+  async function cleanMp3File(file, opts) {
+    const declared = id3v2Declared(await bytesOf(file, 0, ID3_HEADER));
+    if (!isTruncatedId3v2(declared, file.size)) return cleanTagFile(file, stripId3v2Region, opts);
+    const audio = await findMp3FrameHeaderInFile(file);
+    if (audio === -1) {
+      return { parts: [file.slice(0)],
+        actions: [`cannot locate valid audio frame in truncated ID3v2.${declared.major} tag; preserving file`] };
+    }
+    return { parts: [file.slice(audio)],
+      actions: [`drop truncated ID3v2.${declared.major} tag (found audio frame at offset ${audio})`] };
   }
 
   /** Walk RIFF chunks, reading headers and only the chunks that could matter. */
@@ -718,7 +815,7 @@
     const fmt = await detectAvFormatFile(file);
     const r = fmt === "mp4" ? await inspectMp4File(file)
       : fmt === "wav" ? await inspectWavFile(file)
-      : fmt === "mp3" ? await inspectTagFile(file, inspectId3v2)
+      : fmt === "mp3" ? await inspectMp3File(file)
       : fmt === "flac" ? await inspectTagFile(file, inspectFlac)
       : { hasC2pa: false, hasAi: false, findings: [UNSUPPORTED] };
     const notes = fmt === "unknown"
@@ -738,7 +835,7 @@
     let r;
     if (fmt === "mp4") r = await cleanMp4File(file, { stripAllMetadata });
     else if (fmt === "wav") r = await cleanWavFile(file, { stripAllMetadata });
-    else if (fmt === "mp3") r = await cleanTagFile(file, stripId3v2Region, { stripAllMetadata });
+    else if (fmt === "mp3") r = await cleanMp3File(file, { stripAllMetadata });
     else if (fmt === "flac") r = await cleanTagFile(file, stripFlacRegion, { stripAllMetadata });
     else throw new Error(`unsupported audio/video format for cleaning: ${fmt}`);
     return {

@@ -189,7 +189,8 @@ Full notes on each [release](https://github.com/ivanusto/unmark-web/releases).
 ### Unreleased
 
 - **A PNG text chunk can no longer inflate without a bound.** [guillaumemeyer/watermarks-remover#308](https://github.com/guillaumemeyer/watermarks-remover/pull/308) caps a decompressed `zTXt`/`iTXt` value at 1 MiB, because a few hundred KB of crafted deflate expands to hundreds of megabytes and the marker scan then copies it again. `inspectPng` reports such a chunk as *not fully inspected* rather than leaving it out of the findings, and `stripPng` drops it even in keep mode: a chunk nobody could read is not a chunk anyone can vouch for. The same change also means a text chunk whose deflate stream stops early is scanned as far as it decoded, instead of being discarded whole.
-- New parity anchor: `image_meta.py` `bd5d9f19f370`.
+- **A truncated ID3v2 tag is reported, and the audio survives it.** [guillaumemeyer/watermarks-remover#201](https://github.com/guillaumemeyer/watermarks-remover/pull/201): an MP3 whose tag header declares more tag than the file holds used to parse to nothing and be reported clean. It is now reported as truncated, with whatever markers the surviving bytes carry, and a clean drops the unreadable tag up to the first valid MPEG frame header. A file with no such header to find is preserved exactly as it was rather than emptied. Both drivers carry it, and the slice driver finds the frame header without reading the file into memory.
+- New parity anchors: `image_meta.py` `bd5d9f19f370`, `av_meta.py` `f012ed17276c`.
 
 ### [v0.6.1](https://github.com/ivanusto/unmark-web/releases/tag/v0.6.1)
 
