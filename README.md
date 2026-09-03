@@ -186,6 +186,11 @@ No build step, no dependencies at runtime. CSP: `default-src 'self'; connect-src
 
 Full notes on each [release](https://github.com/ivanusto/unmark-web/releases).
 
+### Unreleased
+
+- **A PNG text chunk can no longer inflate without a bound.** [guillaumemeyer/watermarks-remover#308](https://github.com/guillaumemeyer/watermarks-remover/pull/308) caps a decompressed `zTXt`/`iTXt` value at 1 MiB, because a few hundred KB of crafted deflate expands to hundreds of megabytes and the marker scan then copies it again. `inspectPng` reports such a chunk as *not fully inspected* rather than leaving it out of the findings, and `stripPng` drops it even in keep mode: a chunk nobody could read is not a chunk anyone can vouch for. The same change also means a text chunk whose deflate stream stops early is scanned as far as it decoded, instead of being discarded whole.
+- New parity anchor: `image_meta.py` `bd5d9f19f370`.
+
 ### [v0.6.1](https://github.com/ivanusto/unmark-web/releases/tag/v0.6.1)
 
 - **The explanation moved below the tool.** v0.6.0 put it above, which pushed the textarea off the first screen: someone who came here to clean a file had to scroll past a description of the file to reach it. It now sits under the tab panels as an "About Unmark" section, separated by a rule, with the same three cards and the same weight on the caveat.

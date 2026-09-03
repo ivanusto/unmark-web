@@ -166,14 +166,33 @@
     return out;
   }
 
+  /* PNG text is metadata, not a document. Upstream #308 caps a decompressed
+   * zTXt/iTXt value at 1 MiB, because a few hundred KB of crafted deflate
+   * expands to hundreds of megabytes and the marker scan then copies it again.
+   * Upstream enforces the budget with decompressobj(max_length=); inflate()
+   * below refuses to grow past the same point. */
+  const MAX_PNG_TEXT_DECOMPRESSED_BYTES = 1 << 20;
+
+  /* Upstream's PngTextBudgetExceeded: thrown out of pngTextEntries, caught by
+   * inspectPng and stripPng, which refuse the chunk instead of allocating it.
+   * Distinct from a corrupt stream, which stays silent. */
+  class PngTextBudgetExceeded extends Error {
+    constructor() {
+      super(`PNG text decompressed size exceeds cap (${MAX_PNG_TEXT_DECOMPRESSED_BYTES} bytes)`);
+      this.name = "PngTextBudgetExceeded";
+    }
+  }
+
   /* Minimal synchronous DEFLATE (RFC 1951), with the optional zlib wrapper
    * (RFC 1950) skipped when present. Upstream reads PNG zTXt/iTXt payloads
-   * with zlib.decompress; inspect()/clean() are synchronous here and the only
-   * inflate a browser ships (DecompressionStream) is async, so we carry our
-   * own rather than turn the whole API async.
-   * Returns null on anything malformed — callers treat that exactly the way
-   * upstream treats zlib.error: silently yield no entries, never raise. */
-  const INFLATE_MAX_OUTPUT = 16 * 1024 * 1024;  // guards against zip bombs
+   * with zlib; inspect()/clean() are synchronous here and the only inflate a
+   * browser ships (DecompressionStream) is async, so we carry our own rather
+   * than turn the whole API async.
+   * Returns null on a malformed stream — callers treat that exactly the way
+   * upstream treats zlib.error: silently yield no entries. Input that simply
+   * runs out mid-stream is not malformed: decompressobj hands back what it
+   * decoded before the end, so this returns the partial text too. */
+  const INFLATE_EOF = { eof: true };  // thrown when the input runs out, not an error
   const LEN_BASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115,
     131, 163, 195, 227, 258];
   const LEN_EXTRA = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
@@ -212,6 +231,7 @@
   }
 
   function inflate(u8) {
+    let out = new Uint8Array(1024), outLen = 0;
     try {
       let pos = 0;
       // zlib wrapper: CM must be 8 and the 2-byte header is a multiple of 31.
@@ -220,12 +240,11 @@
         pos = 2;
       }
       let bitBuf = 0, bitCnt = 0;
-      let out = new Uint8Array(1024), outLen = 0;
 
       const bits = (n) => {
         if (n === 0) return 0;
         while (bitCnt < n) {
-          if (pos >= u8.length) throw new Error("eof");
+          if (pos >= u8.length) throw INFLATE_EOF;
           bitBuf |= u8[pos++] << bitCnt;
           bitCnt += 8;
         }
@@ -248,10 +267,10 @@
       };
       const grow = (extra) => {
         if (outLen + extra <= out.length) return;
-        if (outLen + extra > INFLATE_MAX_OUTPUT) throw new Error("too large");
+        if (outLen + extra > MAX_PNG_TEXT_DECOMPRESSED_BYTES) throw new PngTextBudgetExceeded();
         let cap = out.length;
         while (cap < outLen + extra) cap *= 2;
-        const next = new Uint8Array(Math.min(cap, INFLATE_MAX_OUTPUT));
+        const next = new Uint8Array(Math.min(cap, MAX_PNG_TEXT_DECOMPRESSED_BYTES));
         next.set(out.subarray(0, outLen));
         out = next;
       };
@@ -262,12 +281,12 @@
         if (type === 0) {
           // Stored: the partial byte is dropped, then LEN/NLEN come raw.
           bitBuf = 0; bitCnt = 0;
-          if (pos + 4 > u8.length) throw new Error("eof");
+          if (pos + 4 > u8.length) throw INFLATE_EOF;
           const len = u8[pos] | (u8[pos + 1] << 8);
           const nlen = u8[pos + 2] | (u8[pos + 3] << 8);
           pos += 4;
           if ((len ^ 0xffff) !== nlen) throw new Error("bad stored block");
-          if (pos + len > u8.length) throw new Error("eof");
+          if (pos + len > u8.length) throw INFLATE_EOF;
           grow(len);
           out.set(u8.subarray(pos, pos + len), outLen);
           outLen += len; pos += len;
@@ -315,7 +334,9 @@
         if (final) break;
       }
       return out.subarray(0, outLen);
-    } catch (_) {
+    } catch (e) {
+      if (e instanceof PngTextBudgetExceeded) throw e;
+      if (e === INFLATE_EOF) return out.subarray(0, outLen);
       return null;
     }
   }
@@ -340,7 +361,8 @@
   /* Parse a PNG text-chunk payload into [key, value] pairs. Handles tEXt
    * (latin-1), zTXt (zlib-compressed text) and iTXt (UTF-8, optionally
    * compressed). Malformed or undecodable chunks yield whatever pairs are
-   * recoverable; nothing is thrown. */
+   * recoverable. Over-budget compressed text throws PngTextBudgetExceeded, so
+   * inspect and clean can refuse the chunk without allocating it. */
   function pngTextEntries(payload, ctype) {
     const nul = payload.indexOf(0);
     if (nul < 0) return [];
@@ -420,9 +442,20 @@
       if (["tEXt", "zTXt", "iTXt", "eXIf"].includes(c.type)) {
         // eXIf is deliberately excluded: it holds no PNG text keys to scope by,
         // and no text to decode, so it keeps the plain payload scan.
-        const [hits, productHits] = c.type === "eXIf"
-          ? [containsAny(c.payload, ALL_HINTS), []]
-          : pngTextHits(c.payload, c.type);
+        let hits, productHits;
+        if (c.type === "eXIf") {
+          [hits, productHits] = [containsAny(c.payload, ALL_HINTS), []];
+        } else {
+          try {
+            [hits, productHits] = pngTextHits(c.payload, c.type);
+          } catch (e) {
+            if (!(e instanceof PngTextBudgetExceeded)) throw e;
+            // A chunk that will not fit the budget is reported as unread rather
+            // than as clean: nothing was scanned, so nothing can be ruled out.
+            findings.push(`PNG ${c.type}: not fully inspected (decompressed text exceeds cap)`);
+            [hits, productHits] = [[], []];
+          }
+        }
         if (hits.length || productHits.length) {
           hasAi = true;
           if (hits.some((h) => C2PA_STRONG_CORE.has(h.toLowerCase()))) hasC2pa = true;
@@ -457,7 +490,16 @@
       if (c.type === "eXIf" || c.type === "caBX" || c.type.startsWith("c2")) {
         drop = true; actions.push(`drop chunk ${c.type}`);
       } else if (["tEXt", "zTXt", "iTXt"].includes(c.type)) {
-        if (stripAllText || textChunkIsAi(c.payload, c.type)) { drop = true; actions.push(`drop chunk ${c.type}`); }
+        try {
+          drop = stripAllText || textChunkIsAi(c.payload, c.type);
+          if (drop) actions.push(`drop chunk ${c.type}`);
+        } catch (e) {
+          if (!(e instanceof PngTextBudgetExceeded)) throw e;
+          // Unreadable in keep mode means undecidable, and an undecidable text
+          // chunk goes. In strip-all mode the `or` above never gets this far.
+          drop = true;
+          actions.push(`drop chunk ${c.type} (decompressed text exceeds cap)`);
+        }
       } else if (!PNG_STRUCTURAL.has(c.type) && containsAny(concat([enc.encode(c.type), c.payload]), C2PA_MARKERS).length) {
         drop = true; actions.push(`drop chunk ${c.type} (C2PA marker in payload)`);
       }
