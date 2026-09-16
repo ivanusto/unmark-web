@@ -128,6 +128,36 @@
         "tests/test_container_meta_parity.py"
       ],
       "comment": "The whole SVG section: the block regexes, inspect_svg, the XML declaration scanners from upstream #288 (_xml_decl_keyword, _xml_decl_end, _strip_xml_declarations), _strip_root_svg_attrs and clean_svg. Ported in full. Note the two decode modes, which are not interchangeable: clean_svg uses surrogateescape so a file that is not valid UTF-8 survives byte for byte, while inspect_svg uses replace. js/container_meta.js writes both out by hand, because TextDecoder offers neither."
+    },
+    {
+      "id": "watermarks-remover/service/scripts/container_meta.py#markdown",
+      "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/container_meta.py",
+      "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/container_meta.py",
+      "sha256": "6a94fdf0cc68f0449ffceda037f2ca9cc5eb9d4af13bc9e2f93d18ad9dcf618a",
+      "slice": {
+        "from": "^_FM_RE = re\\.compile",
+        "until": "^# LaTeX \\(\\.tex / \\.ltx\\)$"
+      },
+      "mirrors": [
+        "js/container_meta.js",
+        "tests/test_container_meta_parity.py"
+      ],
+      "comment": "_FM_RE, _parse_simple_yaml_keys, inspect_markdown and clean_markdown, ported in full. The nested-block rule matters more than it looks: dropping an AI key has to drop the indented lines under it, or `model:` goes and `name: claude-opus` stays."
+    },
+    {
+      "id": "watermarks-remover/service/scripts/container_meta.py#html",
+      "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/container_meta.py",
+      "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/container_meta.py",
+      "sha256": "8a2c43570b2d5834c8c245b8b8605b6e7012b7929c95e2e506a1a545d601388c",
+      "slice": {
+        "from": "^_META_TAG_RE = re\\.compile",
+        "until": "^# SVG$"
+      },
+      "mirrors": [
+        "js/container_meta.js",
+        "tests/test_container_meta_parity.py"
+      ],
+      "comment": "The whole HTML section: _meta_attrs, _is_cms_generator_meta, _meta_tag_is_ai, _find_tag_end, _iter_script_blocks, _script_tag_is_jsonld, inspect_html and clean_html. Ported in full, with one deliberate divergence, which is the second one this port carries after the truncated-MP4 fix that upstream later took as #242. _iter_script_blocks and _iter_data_uris lowercase the whole document to find '<script' and 'data:image/', then index the ORIGINAL string with the result's offsets. That holds only while lowercasing preserves length, and U+0130 does not: it lowercases to two characters in Python and in JavaScript alike, so every offset after it is off by one. One such character earlier in a file hides a JSON-LD provenance block from upstream's inspect AND its clean, and mis-parses an embedded data URI into a different MIME type and a truncated payload. js/container_meta.js lowercases ASCII only, which cannot change length. tests/test_container_meta_parity.py asserts the divergence in both directions, so it fails loudly if upstream fixes this and the two converge again."
     }
   ]
 }

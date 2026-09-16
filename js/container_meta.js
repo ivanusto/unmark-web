@@ -732,12 +732,362 @@
     return { data: encodeUtf8(text), actions };
   }
 
+
+  // ---- HTML ---------------------------------------------------------------
+
+  const META_TAG_RE = compilePy("<meta\\b[^>]*>", true);
+  const META_ATTR_RE = compilePy("(name|property|content|generator)\\s*=\\s*[\"']([^\"']*)[\"']", true);
+
+  // Known AI vendor names for the "generator" meta tag. A plain CMS generator
+  // (WordPress, Elementor) is CMS provenance, not AI-generator metadata.
+  const GENERATOR_AI_RE = compilePy(
+    "claude|anthropic|openai|chatgpt|gemini|synthid|copilot|midjourney|dall.?e|stable.?diffusion", true);
+
+  function metaAttrs(tag) {
+    const out = {};
+    META_ATTR_RE.lastIndex = 0;
+    for (const m of tag.matchAll(META_ATTR_RE)) out[m[1].toLowerCase()] = m[2];
+    return out;
+  }
+
+  /** True for a generator meta tag that is CMS provenance, not AI. */
+  function isCmsGeneratorMeta(tag) {
+    const attrs = metaAttrs(tag);
+    const nameOrProp = (attrs.name || attrs.property || attrs.generator || "").toLowerCase();
+    if (nameOrProp !== "generator") return false;
+    return !(search(GENERATOR_AI_RE, attrs.content || "") || search(GENERATOR_AI_RE, tag));
+  }
+
+  const META_CONTENT_VALUE_RE = compilePy("(\\bcontent\\s*=\\s*)([\"'])[^\"']*\\2", true);
+
+  /**
+   * True when an HTML <meta> tag is evidence of a provenance mark. Only the
+   * `content` value is judged by the free-prose rule; the rest of the tag keeps
+   * the whole-tag scan, so anything that used to be caught in another
+   * attribute still is. Without the split a page loses its description to a
+   * sentence about "a static site generator".
+   */
+  function metaTagIsAi(tag) {
+    const attrs = metaAttrs(tag);
+    const name = attrs.name || attrs.property || attrs.generator || "";
+    const content = attrs.content || "";
+    /* Blank the `content` attribute specifically. A plain replace of the value
+     * would also erase an identical string in another attribute, so
+     * <meta property="Claude" content="Claude"> would lose both copies and
+     * read clean, which is the opposite of what this split guarantees. */
+    META_CONTENT_VALUE_RE.lastIndex = 0;
+    const skeleton = tag.replace(META_CONTENT_VALUE_RE, "$1$2$2");
+    const low = skeleton.toLowerCase();
+    if (search(AI_META_NAME_RE, skeleton) || IM.AI_META_HINTS.slice(0, 12).some((h) => low.includes(h.toLowerCase()))) {
+      return true;
+    }
+    return namedValueIsAi(name, content);
+  }
+
+  const JSONLD_CLOSE_RE = compilePy("</script>", true);
+  // HTML treats form feed as whitespace; include it wherever attribute
+  // separators are checked.
+  const HTML_SPACE = " \t\r\n\f";
+
+  /**
+   * The index just after the closing ">" of the tag at `start`. Quote-aware, so
+   * a ">" inside a quoted attribute value does not end the tag. Returns
+   * text.length for an unterminated tag.
+   */
+  function findTagEnd(text, start) {
+    const n = text.length;
+    let i = start + 1;
+    while (i < n) {
+      const c = text[i];
+      if (c === ">") return i + 1;
+      if (c === '"' || c === "'") {
+        const quote = c;
+        i += 1;
+        while (i < n && text[i] !== quote) i += 1;
+        i += 1;  // skip closing quote
+      } else {
+        i += 1;
+      }
+    }
+    return n;
+  }
+
+  /**
+   * Yield [openStart, openEnd, closeStart, closeEnd] for script blocks. Linear
+   * and quote-aware, with no length cap on the opening tag, so an unterminated
+   * run of "<script" costs one pass rather than a rescan per prefix.
+   */
+  function* iterScriptBlocks(text) {
+    const closes = allMatches(JSONLD_CLOSE_RE, text).map(([a]) => a);
+    let ci = 0;
+    let lastEnd = 0;
+    let pos = 0;
+    const n = text.length;
+    const low = asciiLower(text);
+    for (;;) {
+      const i = low.indexOf("<script", pos);
+      if (i < 0) return;
+      const after = i + 7;
+      if (after >= n || !(">" + HTML_SPACE + "/").includes(text[after])) { pos = i + 1; continue; }
+      const openEnd = findTagEnd(text, i);
+      if (i < lastEnd) { pos = Math.max(openEnd, i + 1); continue; }
+      while (ci < closes.length && closes[ci] < openEnd) ci += 1;
+      if (ci >= closes.length) return;
+      const closeStart = closes[ci];
+      const closeEnd = closeStart + "</script>".length;
+      yield [i, openEnd, closeStart, closeEnd];
+      lastEnd = closeEnd;
+      pos = openEnd;
+    }
+  }
+
+  /**
+   * True iff the opening tag has a top-level type="application/ld+json".
+   * Single-pass and quote-aware, so a quoted value is skipped as a unit and
+   * only a real top-level attribute matches.
+   */
+  function scriptTagIsJsonld(openTag) {
+    let i = 0;
+    const n = openTag.length;
+    if (i < n && openTag[i] === "<") i += 1;
+    while (i < n && !(HTML_SPACE + "/>").includes(openTag[i])) i += 1;  // tag name
+    while (i < n) {
+      while (i < n && HTML_SPACE.includes(openTag[i])) i += 1;
+      if (i >= n || openTag[i] === ">") return false;
+      const nameStart = i;
+      while (i < n && !("=" + HTML_SPACE + "/>").includes(openTag[i])) i += 1;
+      const name = openTag.slice(nameStart, i);
+      while (i < n && HTML_SPACE.includes(openTag[i])) i += 1;
+      let value = "";
+      if (i < n && openTag[i] === "=") {
+        i += 1;
+        while (i < n && HTML_SPACE.includes(openTag[i])) i += 1;
+        if (i < n && (openTag[i] === '"' || openTag[i] === "'")) {
+          const quote = openTag[i];
+          i += 1;
+          const valueStart = i;
+          while (i < n && openTag[i] !== quote) i += 1;
+          value = openTag.slice(valueStart, i);
+          i += 1;  // skip closing quote
+        } else {
+          const valueStart = i;
+          while (i < n && !(HTML_SPACE + ">").includes(openTag[i])) i += 1;
+          value = openTag.slice(valueStart, i);
+        }
+      }
+      if (name.toLowerCase() === "type" && value.toLowerCase() === "application/ld+json") return true;
+    }
+    return false;
+  }
+
+  /** Python's str[:n], which counts code points where JS counts UTF-16 units. */
+  const head = (s, n) => [...s].slice(0, n).join("");
+
+  const JSONLD_AI_RE = compilePy("DigitalSourceType|trainedAlgorithmicMedia|SoftwareAgent", true);
+  const JSONLD_C2PA_RE = compilePy("c2pa|contentcredential", true);
+  const HTML_C2PA_META_RE = compilePy("c2pa|content.?credential", true);
+  /* Two spellings on purpose, matching upstream: inspect anchors on a word
+   * boundary and reports the attribute alone, clean anchors on the preceding
+   * whitespace so removing the attribute does not leave a double space. */
+  const DATA_AI_FIND_RE = compilePy("\\bdata-ai[\\w-]*\\s*=\\s*[\"'][^\"']*[\"']", true);
+  const DATA_AI_DROP_RE = compilePy("\\sdata-ai[\\w-]*\\s*=\\s*[\"'][^\"']*[\"']", true);
+
+  /** inspect_html(text) -> {hasC2pa, hasAi, findings, details} */
+  function inspectHtml(text) {
+    const findings = [];
+    let hasAi = false;
+    let hasC2pa = false;
+    META_TAG_RE.lastIndex = 0;
+    for (const m of text.matchAll(META_TAG_RE)) {
+      const tag = m[0];
+      if (search(HTML_C2PA_META_RE, tag)) hasC2pa = true;
+      if (isCmsGeneratorMeta(tag)) { findings.push(`info: cms generator: ${head(tag, 120)}`); continue; }
+      if (metaTagIsAi(tag)) { hasAi = true; findings.push(`meta: ${head(tag, 120)}`); }
+    }
+    for (const [os, oe, , ce] of iterScriptBlocks(text)) {
+      if (!scriptTagIsJsonld(text.slice(os, oe))) continue;
+      const blob = text.slice(os, ce);
+      if (search(AI_META_NAME_RE, blob) || search(JSONLD_AI_RE, blob)) {
+        hasAi = true;
+        findings.push("json-ld provenance-like block");
+        if (search(JSONLD_C2PA_RE, blob)) hasC2pa = true;
+      }
+    }
+    DATA_AI_FIND_RE.lastIndex = 0;
+    for (const m of text.matchAll(DATA_AI_FIND_RE)) {
+      hasAi = true;
+      findings.push(`attr: ${head(m[0], 80)}`);
+    }
+    const uri = inspectEmbeddedDataUris(text);
+    if (uri.hasC2pa) hasC2pa = true;
+    if (uri.hasAi) hasAi = true;
+    findings.push(...uri.findings);
+    return { hasC2pa, hasAi, findings, details: {} };
+  }
+
+  /** clean_html(text) -> {text, actions} */
+  function cleanHtml(text) {
+    const actions = [];
+    META_TAG_RE.lastIndex = 0;
+    let out = text.replace(META_TAG_RE, (tag) => {
+      if (isCmsGeneratorMeta(tag)) return tag;
+      if (metaTagIsAi(tag)) { actions.push(`drop meta: ${head(tag, 80)}`); return ""; }
+      return tag;
+    });
+
+    const blockIsAi = (openTag, blob) => {
+      if (!scriptTagIsJsonld(openTag)) return false;
+      return search(AI_META_NAME_RE, blob) || search(JSONLD_AI_RE, blob);
+    };
+    const kept = [];
+    let last = 0;
+    let n = 0;
+    for (const [os, oe, , ce] of iterScriptBlocks(out)) {
+      const blob = out.slice(os, ce);
+      if (!blockIsAi(out.slice(os, oe), blob)) continue;
+      kept.push(out.slice(last, os));
+      last = ce;
+      n += 1;
+    }
+    if (n) {
+      kept.push(out.slice(last));
+      out = kept.join("");
+      for (let k = 0; k < n; k++) actions.push("drop json-ld provenance-like script");
+    }
+
+    let attrCount = 0;
+    DATA_AI_DROP_RE.lastIndex = 0;
+    const out2 = out.replace(DATA_AI_DROP_RE, () => { attrCount += 1; return ""; });
+    if (attrCount) { actions.push(`drop data-ai* attributes x${attrCount}`); out = out2; }
+
+    const uri = cleanEmbeddedDataUris(out);
+    out = uri.text;
+    if (uri.actions.length) actions.push(...uri.actions);
+
+    if (!actions.length) actions.push("no HTML AI meta removed");
+    return { text: out, actions };
+  }
+
+  // ---- Markdown frontmatter ----------------------------------------------
+
+  // re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?", re.DOTALL): \A is the start of
+  // the string, and [\s\S] is the JS spelling of a dot under DOTALL.
+  const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+  const FM_KEY_RE = compilePy("^([A-Za-z0-9_.-]+)\\s*:", false);
+
+  const matchStart = (re, s) => { re.lastIndex = 0; const m = re.exec(s); return m && m.index === 0 ? m : null; };
+
+  /** _parse_simple_yaml_keys(block) -> [[key, line, index], ...] for top-level keys. */
+  function parseSimpleYamlKeys(block) {
+    const rows = [];
+    const lines = PyRe.pySplitlines(block);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const stripped = PyRe.pyStrip(line);
+      if (!stripped || stripped.startsWith("#")) continue;
+      if (line[0] === " " || line[0] === "\t" || line[0] === "-") continue;  // nested / list
+      const m = matchStart(FM_KEY_RE, line);
+      if (m) rows.push([m[1], line, i]);
+    }
+    return rows;
+  }
+
+  const afterColon = (line) => (line.includes(":") ? line.slice(line.indexOf(":") + 1) : "");
+
+  /** inspect_markdown(text) -> {hasC2pa, hasAi, findings, details} */
+  function inspectMarkdown(text) {
+    const findings = [];
+    let hasAi = false;
+    let hasFm = false;
+    const keys = [];
+    const m = FM_RE.exec(text);
+    if (m) {
+      hasFm = true;
+      for (const [key, line] of parseSimpleYamlKeys(m[1])) {
+        keys.push(key);
+        if (AI_FRONTMATTER_KEYS.has(key.toLowerCase()) || search(AI_META_NAME_RE, key)) {
+          hasAi = true;
+          findings.push(`frontmatter key: ${key}`);
+        }
+        if (namedValueIsAi(key, afterColon(line))) {
+          hasAi = true;
+          findings.push(`frontmatter value hit on ${key}`);
+        }
+      }
+    }
+    const uri = inspectEmbeddedDataUris(text);
+    if (uri.hasC2pa) hasAi = true;
+    if (uri.hasAi) hasAi = true;
+    findings.push(...uri.findings);
+    const c2pa = uri.hasC2pa || findings.some((f) => {
+      const low = f.toLowerCase();
+      return low.includes("c2pa") || low.includes("content");
+    });
+    return { hasC2pa: c2pa, hasAi, findings, details: { has_frontmatter: hasFm, keys } };
+  }
+
+  const stripNewlines = (s) => s.replace(/^\n+/, "").replace(/\n+$/, "");
+  const lstripNewlines = (s) => s.replace(/^\n+/, "");
+
+  /** clean_markdown(text) -> {text, actions} */
+  function cleanMarkdown(text) {
+    const actions = [];
+    const m = FM_RE.exec(text);
+    let out;
+    if (m) {
+      const block = m[1];
+      const body = text.slice(m[0].length);
+      const kept = [];
+      let dropping = false;  // inside the nested block of a dropped top-level key
+      for (const line of PyRe.pySplitlines(block)) {
+        const stripped = PyRe.pyStrip(line);
+        // Blank lines and comments belong to whichever block we are inside.
+        if (!stripped || stripped.startsWith("#")) { if (!dropping) kept.push(line); continue; }
+        // Continuation lines (nested mappings, list items) follow their parent.
+        if (line[0] === " " || line[0] === "\t" || line[0] === "-") { if (!dropping) kept.push(line); continue; }
+        const km = matchStart(FM_KEY_RE, line);
+        if (!km) { dropping = false; kept.push(line); continue; }
+        const key = km[1];
+        const val = afterColon(line);
+        if (AI_FRONTMATTER_KEYS.has(key.toLowerCase()) || search(AI_META_NAME_RE, key)) {
+          actions.push(`drop frontmatter key: ${key}`);
+          dropping = true;
+          continue;
+        }
+        if (namedValueIsAi(key, val)) {
+          actions.push(`drop frontmatter key (value hit): ${key}`);
+          dropping = true;
+          continue;
+        }
+        dropping = false;
+        kept.push(line);
+      }
+      const newBlock = stripNewlines(kept.join("\n"));
+      if (newBlock) {
+        out = `---\n${newBlock}\n---\n${body}`;
+      } else {
+        out = lstripNewlines(body);
+        actions.push("removed empty frontmatter block");
+      }
+    } else {
+      out = text;
+    }
+    const uri = cleanEmbeddedDataUris(out);
+    out = uri.text;
+    if (uri.actions.length) actions.push(...uri.actions);
+    if (!actions.length) actions.push("no AI frontmatter keys or embedded data URIs removed");
+    return { text: out, actions };
+  }
+
   const api = {
     decodeUtf8, encodeUtf8, b64decode, b64encode, unquoteToBytes, quoteFromBytes,
     namedValueIsAi, blobHits,
     iterDataUris, inspectEmbeddedDataUris, cleanEmbeddedDataUris,
     iterTagBlocks, dropTagBlocks, dropBlocksIf,
     inspectSvg, cleanSvg, stripXmlDeclarations, stripRootSvgAttrs,
+    inspectHtml, cleanHtml, inspectMarkdown, cleanMarkdown,
+    metaAttrs, isCmsGeneratorMeta, metaTagIsAi, scriptTagIsJsonld, iterScriptBlocks,
+    parseSimpleYamlKeys,
     AI_FRONTMATTER_KEYS, GENERATOR_NAME_KEYS, AI_META_NAME_RE, AI_FREE_TEXT_MARKER_RE,
   };
   root.ContainerMeta = api;

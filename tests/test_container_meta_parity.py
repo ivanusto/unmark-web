@@ -277,6 +277,82 @@ def test_unquote_to_bytes_matches_cpython(text: str) -> None:
 # the ported functions
 # --------------------------------------------------------------------------
 
+_LONG_SCRIPT_PADDING = " ".join(f'data-{i}="x"' for i in range(300))
+
+HTMLS = {
+    "empty": "",
+    "no_meta": "<html><body><p>hello</p></body></html>",
+    # The nine shapes upstream's own HTML tests pin down.
+    "generator_ai": '<meta name="generator" content="ChatGPT">',
+    "generator_cms": '<meta name="generator" content="WordPress 6.0">',
+    "generator_cms_uppercase_attrs": '<META NAME="generator" CONTENT="WordPress 6.0">',
+    "generator_cms_mixed_attrs": '<meta Name="generator" Content="WordPress 6.0">',
+    "generator_claude_uppercase_attrs": '<META NAME="generator" CONTENT="Claude">',
+    "page_with_meta_and_attr": """<html><head>
+<meta name="generator" content="ChatGPT">
+<meta name="viewport" content="width=device-width">
+<meta name="description" content="ok">
+</head><body data-ai-model="gpt">Hi</body></html>""",
+    "jsonld_ai": ('<script type="application/ld+json">'
+                  '{"@type":"CreativeWork","digitalSourceType":"trainedAlgorithmicMedia"}'
+                  "</script>"),
+    "jsonld_plain_and_regular_script": (
+        '<script type="application/ld+json">{"@type":"Book","name":"plain"}</script>'
+        '<script>var x = "trainedAlgorithmicMedia";</script>'),
+    "jsonld_form_feed": ('<script\ftype="application/ld+json">'
+                         '{"@type":"CreativeWork","digitalSourceType":"trainedAlgorithmicMedia"}'
+                         "</script>"),
+    "jsonld_long_open_tag": (f'<script {_LONG_SCRIPT_PADDING} type="application/ld+json">'
+                             '{"@type":"Image","digitalSourceType":"trainedAlgorithmicMedia"}'
+                             "</script>"),
+    "jsonld_gt_in_quoted_attr": ('<script title="a > b" type="application/ld+json">'
+                                 '{"@type":"Image","digitalSourceType":"trainedAlgorithmicMedia"}'
+                                 "</script>"),
+    # The free-prose rule from upstream #336 and #342: a description that talks
+    # about generators is prose, a generator field that names one is not.
+    "description_mentions_generator": '<meta name="description" content="a static site generator">',
+    "description_mentions_c2pa": '<meta name="description" content="about c2pa manifests">',
+    "property_and_content_same_value": '<meta property="Claude" content="Claude">',
+    "creator_names_a_tool": '<meta name="creator" content="Midjourney">',
+    "content_single_quotes": "<meta name='generator' content='Claude'>",
+    "content_mismatched_quotes": '<meta name="generator" content=\'Claude">',
+    # Shapes that exist to break the scanners.
+    "unclosed_script": '<script type="application/ld+json">{"digitalSourceType":"x"}',
+    "script_flood": "<script" * 500,
+    "script_close_before_open": '</script><script type="application/ld+json">{"aigc":1}</script>',
+    "nested_scripts": ('<script type="application/ld+json">{"a":1}'
+                       '<script type="application/ld+json">{"digitalSourceType":"x"}</script></script>'),
+    "meta_unclosed": '<meta name="generator" content="Claude"',
+    "data_ai_variants": '<p data-ai="1" data-ai-model="gpt" data-aioli="x" data-ai-run-id="7">hi</p>',
+    "embedded_png_in_img": '<img src="data:image/png;base64,' + base64.b64encode(PNG_AI).decode() + '">',
+    "c2pa_meta": '<meta name="c2pa" content="manifest">',
+}
+
+MARKDOWNS = {
+    "empty": "",
+    "no_frontmatter": "# Title\n\nJust a body.\n",
+    # The five shapes upstream's own markdown tests pin down.
+    "ai_keys": "---\ntitle: Hello\ngenerator: Claude\nai_generated: true\n---\nBody\u200b text.\n",
+    "blank_line_inside": "---\ntitle: Demo\n\nauthor: you\n---\nBody\n",
+    "nested_children_of_dropped_key": "---\ntitle: Demo\nmodel:\n  name: claude-opus\n  version: 4\nauthor: you\n---\nBody\n",
+    "nested_then_generator": "---\ntitle: Demo\nmodel:\n  name: claude-opus\ngenerator: Claude\n---\nBody\n",
+    "comments_and_lists": "---\n# editorial notes\ntitle: Demo\ntags:\n  - one\n  - two\n---\nBody\n",
+    # Value-side rules.
+    "value_hit_on_named_key": "---\ncreator: Midjourney\ntitle: Demo\n---\nBody\n",
+    "value_prose_on_free_key": "---\ndescription: a static site generator\n---\nBody\n",
+    "value_marker_on_free_key": "---\ndescription: carries a c2pa manifest\n---\nBody\n",
+    # Frontmatter shapes.
+    "only_ai_keys": "---\ngenerator: Claude\n---\n\n\nBody\n",
+    "crlf": "---\r\ntitle: Demo\r\ngenerator: Claude\r\n---\r\nBody\r\n",
+    "unterminated_frontmatter": "---\ntitle: Demo\ngenerator: Claude\nBody\n",
+    "not_at_start": "Intro\n---\ngenerator: Claude\n---\nBody\n",
+    "dotted_key": "---\nai.generator: Claude\ntitle: Demo\n---\nBody\n",
+    "embedded_png": '![x](data:image/png;base64,' + base64.b64encode(PNG_AI).decode() + ')\n',
+    "frontmatter_and_embedded_png": ("---\ngenerator: Claude\n---\n![x](data:image/png;base64,"
+                                     + base64.b64encode(PNG_AI).decode() + ")\n"),
+}
+
+
 @pytest.mark.parametrize("name", sorted(BLOBS))
 def test_blob_hits_parity(name: str) -> None:
     data = BLOBS[name]
@@ -337,3 +413,118 @@ def test_clean_svg_preserves_bytes_that_are_not_utf8() -> None:
     got = base64.b64decode(_js({"mode": "svg_clean", "file": base64.b64encode(data).decode()})["data"])
     assert b"\xff\xfe\x80" in got
     assert b"caf\xe9" in got
+
+
+@pytest.mark.parametrize("name", sorted(HTMLS))
+def test_inspect_html_parity(name: str) -> None:
+    text = HTMLS[name]
+    has_c2pa, has_ai, findings, _details = container_meta.inspect_html(text)
+    got = _js({"mode": "html_inspect", "text": text})
+    assert got == {"has_c2pa": has_c2pa, "has_ai": has_ai, "findings": findings}
+
+
+@pytest.mark.parametrize("name", sorted(HTMLS))
+def test_clean_html_parity(name: str) -> None:
+    text = HTMLS[name]
+    expected_text, expected_actions = container_meta.clean_html(text)
+    got = _js({"mode": "html_clean", "text": text})
+    assert got["text"] == expected_text
+    assert got["actions"] == expected_actions
+
+
+@pytest.mark.parametrize("name", sorted(MARKDOWNS))
+def test_inspect_markdown_parity(name: str) -> None:
+    text = MARKDOWNS[name]
+    has_c2pa, has_ai, findings, details = container_meta.inspect_markdown(text)
+    got = _js({"mode": "md_inspect", "text": text})
+    assert got == {"has_c2pa": has_c2pa, "has_ai": has_ai, "findings": findings,
+                   "details": {"has_frontmatter": details["has_frontmatter"], "keys": details["keys"]}}
+
+
+@pytest.mark.parametrize("name", sorted(MARKDOWNS))
+def test_clean_markdown_parity(name: str) -> None:
+    text = MARKDOWNS[name]
+    expected_text, expected_actions = container_meta.clean_markdown(text)
+    got = _js({"mode": "md_clean", "text": text})
+    assert got["text"] == expected_text
+    assert got["actions"] == expected_actions
+
+
+@pytest.mark.parametrize("name", sorted(MARKDOWNS))
+def test_cleaned_markdown_is_no_longer_flagged(name: str) -> None:
+    """Round-trip, on both engines: a cleaned document reports nothing AI-ish.
+
+    Upstream asserts this for one document; asserting it for every fixture is
+    what catches a clean that removes the finding string without removing what
+    produced it.
+    """
+    cleaned = _js({"mode": "md_clean", "text": MARKDOWNS[name]})["text"]
+    again = _js({"mode": "md_inspect", "text": cleaned})
+    _c2, has_ai, findings, _d = container_meta.inspect_markdown(cleaned)
+    assert again["has_ai"] == has_ai
+    assert again["findings"] == findings
+
+
+# --------------------------------------------------------------------------
+# a deliberate divergence
+# --------------------------------------------------------------------------
+#
+# Upstream lowercases the whole document to locate "<script" and
+# "data:image/", then indexes the ORIGINAL string with the result's offsets.
+# That holds only while lowercasing preserves length, and U+0130 (LATIN
+# CAPITAL LETTER I WITH DOT ABOVE) lowercases to two characters in Python and
+# in JavaScript alike. Every offset after it is then off by one.
+#
+# The consequence is not cosmetic: one such character anywhere earlier in the
+# file hides a JSON-LD provenance block from both inspect and clean, and
+# mis-parses an embedded data URI into a different MIME type and a truncated
+# payload. js/container_meta.js lowercases ASCII only, which cannot change
+# length, so it finds both. The tests below assert the divergence rather than
+# hide it, and scripts/upstream-sources.json records it.
+
+DOTTED_I = "\u0130"
+DOTTED_I_HTML = (f"<p>{DOTTED_I}</p>"
+                 '<script type="application/ld+json">'
+                 '{"digitalSourceType":"trainedAlgorithmicMedia"}</script>')
+DOTTED_I_URI = f'<p>{DOTTED_I}</p><img src="data:image/png;base64,' + base64.b64encode(PNG_AI).decode() + '">'
+
+
+def test_dotted_capital_i_hides_a_jsonld_block_from_upstream() -> None:
+    _c2, upstream_has_ai, upstream_findings, _d = container_meta.inspect_html(DOTTED_I_HTML)
+    assert not upstream_has_ai and not upstream_findings, "upstream started finding this; drop the divergence"
+    assert container_meta.clean_html(DOTTED_I_HTML)[0] == DOTTED_I_HTML
+
+    got = _js({"mode": "html_inspect", "text": DOTTED_I_HTML})
+    assert got["has_ai"] is True
+    assert got["findings"] == ["json-ld provenance-like block"]
+    cleaned = _js({"mode": "html_clean", "text": DOTTED_I_HTML})
+    assert "digitalSourceType" not in cleaned["text"]
+    assert cleaned["actions"] == ["drop json-ld provenance-like script"]
+
+
+def test_dotted_capital_i_misparses_a_data_uri_upstream() -> None:
+    upstream = list(container_meta._iter_data_uris(DOTTED_I_URI))
+    assert len(upstream) == 1
+    assert upstream[0][2] == "ng", "upstream started parsing this correctly; drop the divergence"
+
+    ours = _js({"mode": "uri_list", "text": DOTTED_I_URI})["uris"]
+    assert len(ours) == 1
+    assert ours[0][2] == "png"
+    assert ours[0][4] == base64.b64encode(PNG_AI).decode()
+    assert _js({"mode": "uri_inspect", "text": DOTTED_I_URI})["has_ai"] is True
+
+
+def test_ascii_lowering_agrees_with_upstream_everywhere_else() -> None:
+    """The divergence is confined to characters whose lowercase is longer.
+
+    Every other fixture in this file goes through the same scanners and is
+    compared against upstream directly, so this only has to say what the rule
+    is: a document of plain uppercase ASCII and ordinary accented letters must
+    parse identically on both sides.
+    """
+    text = ('<P>CAF\u00c9 STRASSE \u0391\u0392\u0393</P>'
+            '<SCRIPT TYPE="application/ld+json">{"aigc":1}</SCRIPT>')
+    _c2, has_ai, findings, _d = container_meta.inspect_html(text)
+    got = _js({"mode": "html_inspect", "text": text})
+    assert got["has_ai"] == has_ai
+    assert got["findings"] == findings

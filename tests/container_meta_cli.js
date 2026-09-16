@@ -5,8 +5,13 @@
 //
 //   {"mode":"svg_inspect","file":<b64>}      -> {has_c2pa, has_ai, findings}
 //   {"mode":"svg_clean","file":<b64>}        -> {data:<b64>, actions}
+//   {"mode":"html_inspect","text":<str>}     -> {has_c2pa, has_ai, findings}
+//   {"mode":"html_clean","text":<str>}       -> {text, actions}
+//   {"mode":"md_inspect","text":<str>}       -> {has_c2pa, has_ai, findings, details}
+//   {"mode":"md_clean","text":<str>}         -> {text, actions}
 //   {"mode":"uri_inspect","text":<str>}      -> {has_c2pa, has_ai, findings}
 //   {"mode":"uri_clean","text":<str>}        -> {text, actions}
+//   {"mode":"uri_list","text":<str>}         -> {uris:[[start,end,mime,params,payload]]}
 //   {"mode":"blob_hits","file":<b64>}        -> {has_c2pa, has_ai, findings}
 //   {"mode":"named_value","name","value"}    -> {is_ai}
 //   {"mode":"decode","file":<b64>,"errors"}  -> {text}
@@ -34,9 +39,28 @@ process.stdin.on("end", () => {
       const r = CM.cleanSvg(u8(req.file));
       return w({ data: b64(r.data), actions: r.actions });
     }
+    if (req.mode === "html_inspect") {
+      const r = CM.inspectHtml(req.text);
+      return w({ has_c2pa: r.hasC2pa, has_ai: r.hasAi, findings: r.findings });
+    }
+    if (req.mode === "html_clean") {
+      const r = CM.cleanHtml(req.text);
+      return w({ text: r.text, actions: r.actions });
+    }
+    if (req.mode === "md_inspect") {
+      const r = CM.inspectMarkdown(req.text);
+      return w({ has_c2pa: r.hasC2pa, has_ai: r.hasAi, findings: r.findings, details: r.details });
+    }
+    if (req.mode === "md_clean") {
+      const r = CM.cleanMarkdown(req.text);
+      return w({ text: r.text, actions: r.actions });
+    }
     if (req.mode === "uri_inspect") {
       const r = CM.inspectEmbeddedDataUris(req.text);
       return w({ has_c2pa: r.hasC2pa, has_ai: r.hasAi, findings: r.findings });
+    }
+    if (req.mode === "uri_list") {
+      return w({ uris: [...CM.iterDataUris(req.text)] });
     }
     if (req.mode === "uri_clean") {
       const r = CM.cleanEmbeddedDataUris(req.text, req.options || {});
