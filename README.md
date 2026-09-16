@@ -172,7 +172,7 @@ There is no `package.json` here, because nothing at runtime or in the test suite
 - `js/image_meta.js`: port of `image_meta.py` (PNG/JPEG/WebP/AVIF/HEIC/BMP/GIF/TIFF inspect + strip)
 - `js/av_meta.js`: port of `av_meta.py` (MP4/MOV/M4A/M4V, WAV, MP3, FLAC inspect + strip; MP4 reuses the ISOBMFF box walker that already backs AVIF and HEIC)
 - `js/pyre.js`: Python `re` and `str` semantics (`\w`, `\b`, `\s`, `str.strip`, `str.splitlines`, `IGNORECASE`) for the ports that have to match CPython exactly rather than approximately
-- `js/container_meta.js`: port of the text-markup half of `container_meta.py` (SVG inspect + strip, embedded `data:image/...` URIs routed back through the image strippers, the shared generator-name vocabulary). The ZIP and PDF halves of that file are not ported and have no browser counterpart.
+- `js/container_meta.js`: port of the text-markup half of `container_meta.py` (SVG, HTML and Markdown frontmatter inspect + strip, embedded `data:image/...` URIs routed back through the image strippers, the shared generator-name vocabulary). The ZIP and PDF halves of that file are not ported and have no browser counterpart.
 - `js/stylometry.js`: port of `score_stylometry.py` (burstiness / MATTR / AI-phrase density; heuristic, not a watermark detector)
 - `js/gumbel.js`: port of `detect_gumbel.py` (keyed-Gumbel / EXP same-key replay, with its own synchronous SHA-256 and HMAC so it needs neither `crypto.subtle` nor a secure context)
 - `js/detectors.js`: the Inspector's detector registry: one result contract for the character, metadata and statistical layers, plus `summarize()` / `compare()` for the Overall box and the before/after view

@@ -167,7 +167,7 @@ node scripts/check-upstream.mjs                                                 
 - `js/image_meta.js`，`image_meta.py` 的移植（PNG/JPEG/WebP/AVIF/HEIC/BMP/GIF/TIFF 檢查與清除）
 - `js/av_meta.js`，`av_meta.py` 的移植（MP4／MOV／M4A／M4V、WAV、MP3、FLAC 的檢查與清除；MP4 沿用 AVIF 與 HEIC 已經在用的 ISOBMFF box walker）
 - `js/pyre.js`，Python `re` 與 `str` 的語意（`\w`、`\b`、`\s`、`str.strip`、`str.splitlines`、`IGNORECASE`），給必須逐字對上 CPython 而不是「差不多」的移植使用
-- `js/container_meta.js`，`container_meta.py` 文字標記那半的移植（SVG 的檢查與清除、把內嵌的 `data:image/…` URI 丟回圖片清除器、共用的生成器鍵名詞彙）。該檔的 ZIP 與 PDF 那半沒有移植，在瀏覽器裡也沒有對應物。
+- `js/container_meta.js`，`container_meta.py` 文字標記那半的移植（SVG、HTML 與 Markdown frontmatter 的檢查與清除、把內嵌的 `data:image/…` URI 丟回圖片清除器、共用的生成器鍵名詞彙）。該檔的 ZIP 與 PDF 那半沒有移植，在瀏覽器裡也沒有對應物。
 - `js/stylometry.js`，`score_stylometry.py` 的移植（burstiness／MATTR／AI 片語密度；啟發式，不是浮水印偵測器）
 - `js/gumbel.js`，`detect_gumbel.py` 的移植（keyed-Gumbel／EXP 同金鑰重放，自帶同步版 SHA-256 與 HMAC，因此不需要 `crypto.subtle`，也不需要 secure context）
 - `js/detectors.js`，檢測器的偵測器註冊表：字元、中繼資料、統計三層共用一種結果契約，加上給總結與前後對照用的 `summarize()`／`compare()`
