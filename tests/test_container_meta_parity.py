@@ -479,8 +479,9 @@ def test_cleaned_markdown_is_no_longer_flagged(name: str) -> None:
 # file hides a JSON-LD provenance block from both inspect and clean, and
 # mis-parses an embedded data URI into a different MIME type and a truncated
 # payload. js/container_meta.js lowercases ASCII only, which cannot change
-# length, so it finds both. The tests below assert the divergence rather than
-# hide it, and scripts/upstream-sources.json records it.
+# length, so it finds both. Reported upstream as
+# guillaumemeyer/watermarks-remover#354. The tests below assert the divergence
+# rather than hide it, and scripts/upstream-sources.json records it.
 
 DOTTED_I = "\u0130"
 DOTTED_I_HTML = (f"<p>{DOTTED_I}</p>"
