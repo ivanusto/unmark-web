@@ -11,7 +11,7 @@
 
 - **完全在瀏覽器中執行**：文字（Layer A：隱形 Unicode／同形字空白）與 PNG／JPEG／WebP／AVIF／HEIC／BMP／GIF／TIFF 中繼資料（C2PA、EXIF、XMP、文字區塊）皆是。不上傳、不做分析追蹤、不載入網頁字型、不發送任何第三方請求。
 - **可選擇驅動上游的 Python 服務**（`server.py`）處理其餘格式，PDF、DOCX、ODT、EPUB、完整的 HTML／SVG／Markdown 容器清理，以及像素域後端。
-- JavaScript 引擎是上游 **`text_unicode.py`、`image_meta.py`、`score_stylometry.py` 與 `detect_gumbel.py` 的逐行移植**，並有一套 parity 測試驗證輸出完全一致（保留／移除的字元相同，圖片解析器輸出的位元組相同，文風統計的數字相同，keyed-Gumbel 的 p 值也相同）。
+- JavaScript 引擎是上游 **`text_unicode.py`、`image_meta.py`、`av_meta.py`、`score_stylometry.py` 與 `detect_gumbel.py` 的逐行移植**，並有一套 parity 測試驗證輸出完全一致（保留／移除的字元相同，圖片與影音解析器輸出的位元組相同，文風統計的數字相同，keyed-Gumbel 的 p 值也相同）。
 - **「檢測器」分頁**是一個偵測實驗室：對同一份輸入跑過每一個偵測器並分別回報，字元層、中繼資料層、統計層，還能在 Layer A 清理後重新檢測，讓你看清楚清理器*沒有*動到哪一層。Keyed-Gumbel（EXP）偵測直接在頁面裡跑；其餘統計型偵測器（Kirchenbauer、SynthID-Text）透過選用的本機 sidecar 執行。
 
 線上示範：[https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/unmark-web/) · 本機執行：直接開啟 `index.html`，或執行 `python3 serve_local.py`。
@@ -42,9 +42,10 @@
 * **被截斷的檔案會保留截斷的尾段。** 下載中斷時，最後一個 PNG chunk 或 ISOBMFF 盒宣告的
   長度會超出檔案實際內容。那段尾巴會原樣保留並列進動作清單，避免把一個還救得回來的圖
   變成打不開的空殼，還宣稱它本來就是乾淨的。
-* **音訊與影片不會進到記憶體。** 清理分頁只透過 `File.slice()` 讀 box 與 chunk 的標頭，
-  交給瀏覽器的是由原檔切片組成的 `Blob`，因此幾 GB 的錄影也能在不持有整個檔案的情況下
-  清理，只有中繼資料那幾段會被讀進來。檢測器分頁仍然整份讀入，維持 64 MiB 上限。
+* **音訊與影片不會進到記憶體。** 清理分頁與檢測器分頁都只透過 `File.slice()` 讀 box 與
+  chunk 的標頭，因此幾 GB 的錄影也能在不持有整個檔案的情況下處理，64 MiB 上限對它們不適用，
+  只有中繼資料那幾段會被讀進來。圖片與文字在兩個分頁仍然整份讀入並維持上限：處理它們的
+  解析器需要完整位元組。
 
 ## 連接伺服器
 

@@ -9,6 +9,20 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src *; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="css/app.css" />
+
+  <!-- Deferred, and in the head rather than at the end of the body: the fetch
+       then overlaps parsing instead of starting after it, while execution still
+       waits for the document. Order is preserved, which these files rely on -
+       each one reads the globals the ones above it defined. -->
+  <script defer src="js/layer_a.js"></script>
+  <script defer src="js/image_meta.js"></script>
+  <script defer src="js/av_meta.js"></script>
+  <script defer src="js/api.js"></script>
+  <script defer src="js/stylometry.js"></script>
+  <script defer src="js/gumbel.js"></script>
+  <script defer src="js/detectors.js"></script>
+  <script defer src="js/i18n.js"></script>
+  <script defer src="js/app.js"></script>
 </head>
 <body data-theme="dark">
   <a class="sr-only" href="#main" data-i18n="skipLink">Skip to content</a>
@@ -155,7 +169,7 @@
           <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-describedby="dropzone-desc">
             <div class="dropzone-icon" aria-hidden="true">📥</div>
             <div class="dropzone-title" data-i18n="dropTitle">Drop files here, or press Enter to browse</div>
-            <div class="dropzone-desc" id="dropzone-desc" data-i18n="dropDescBrowser">On this device: PNG, JPEG, WebP, AVIF, HEIC, BMP, GIF, TIFF and MP4, MOV, M4A, M4V, MP3, WAV, FLAC (metadata; audio and video at any size), TXT/MD/HTML/SVG (Layer A text only). PDF, DOCX, ODT need a server.</div>
+            <div class="dropzone-desc" id="dropzone-desc" data-i18n="dropDescBrowser">On this device: PNG, JPEG, WebP, AVIF, HEIC, BMP, GIF, TIFF and MP4, MOV, M4A, M4V, MP3, WAV, FLAC (metadata; audio and video at any size), TXT/MD/HTML/SVG (Layer A text only). PDF, DOCX, ODT, EPUB need a server.</div>
           </div>
           <div class="options-bar mt-14">
             <div class="options-group">
@@ -269,14 +283,5 @@
     </footer>
   </div>
 
-  <script src="js/layer_a.js"></script>
-  <script src="js/image_meta.js"></script>
-  <script src="js/av_meta.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/stylometry.js"></script>
-  <script src="js/gumbel.js"></script>
-  <script src="js/detectors.js"></script>
-  <script src="js/i18n.js"></script>
-  <script src="js/app.js"></script>
 </body>
 </html>
