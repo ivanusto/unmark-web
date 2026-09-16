@@ -167,12 +167,13 @@ node scripts/check-upstream.mjs                                                 
 - `js/image_meta.js`，`image_meta.py` 的移植（PNG/JPEG/WebP/AVIF/HEIC/BMP/GIF/TIFF 檢查與清除）
 - `js/av_meta.js`，`av_meta.py` 的移植（MP4／MOV／M4A／M4V、WAV、MP3、FLAC 的檢查與清除；MP4 沿用 AVIF 與 HEIC 已經在用的 ISOBMFF box walker）
 - `js/pyre.js`，Python `re` 與 `str` 的語意（`\w`、`\b`、`\s`、`str.strip`、`str.splitlines`、`IGNORECASE`），給必須逐字對上 CPython 而不是「差不多」的移植使用
+- `js/container_meta.js`，`container_meta.py` 文字標記那半的移植（SVG 的檢查與清除、把內嵌的 `data:image/…` URI 丟回圖片清除器、共用的生成器鍵名詞彙）。該檔的 ZIP 與 PDF 那半沒有移植，在瀏覽器裡也沒有對應物。
 - `js/stylometry.js`，`score_stylometry.py` 的移植（burstiness／MATTR／AI 片語密度；啟發式，不是浮水印偵測器）
 - `js/gumbel.js`，`detect_gumbel.py` 的移植（keyed-Gumbel／EXP 同金鑰重放，自帶同步版 SHA-256 與 HMAC，因此不需要 `crypto.subtle`，也不需要 secure context）
 - `js/detectors.js`，檢測器的偵測器註冊表：字元、中繼資料、統計三層共用一種結果契約，加上給總結與前後對照用的 `summarize()`／`compare()`
 - `js/api.js`，`/health /capabilities /inspect /clean /detect` 的客戶端，以及選用的 `/llm-config`＋`/llm` 改寫呼叫與 `/stat-config`＋`/stat` sidecar 呼叫
 - `js/i18n.js`、`js/app.js`、`css/app.css`、`index.html`，UI（英文／繁體中文／簡體中文、淺色／深色、支援鍵盤操作）。語系依 `navigator.languages` 判斷並記在 `localStorage`；新增語言只需在 `js/i18n.js` 的 `LANGS` 加一列、再加一本字典。
-- `tests/test_layer_a_parity.py`、`tests/test_image_meta_parity.py`、`tests/test_av_meta_parity.py`、`tests/test_stylometry_parity.py`、`tests/test_gumbel_parity.py`、`tests/test_contains_any_parity.py`、`tests/test_c2pa_prov_scan_parity.py`、`tests/test_finding_confidence_parity.py`，與上游 checkout 的跨引擎 parity 測試（缺少 `node` 或該 checkout 時會跳過，所以整套測試要用 `-rs` 跑）
+- `tests/test_layer_a_parity.py`、`tests/test_image_meta_parity.py`、`tests/test_av_meta_parity.py`、`tests/test_stylometry_parity.py`、`tests/test_gumbel_parity.py`、`tests/test_container_meta_parity.py`、`tests/test_contains_any_parity.py`、`tests/test_c2pa_prov_scan_parity.py`、`tests/test_finding_confidence_parity.py`，與上游 checkout 的跨引擎 parity 測試（缺少 `node` 或該 checkout 時會跳過，所以整套測試要用 `-rs` 跑）
 - `tests/test_i18n_keys.py`，三個語系必須有相同的字串鍵，且 `index.html` 裡每個 `data-i18n` 都解得開。這種缺口在執行期看不出來，因為 `t()` 會靜靜 fallback。
 - `serve_local.py`，同源靜態伺服器 + `/api` 代理、選用的 `/llm` 改寫代理，以及選用的 `/stat` sidecar 代理
 - `sidecar/`，統計型偵測器 sidecar（有自己的 `requirements.txt`；永遠不是頁面的一部分）
