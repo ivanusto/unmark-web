@@ -81,8 +81,13 @@
 
   // ------------------------------------------------------------ character layer (Layer A)
   const isText = (input) => !!input && input.kind === "text" && typeof input.text === "string";
+  /* Every local detector goes through js/engine.js, which runs it in a worker
+   * when the browser allows one. The cache holds the promise, not the report,
+   * so three character detectors over the same input still cost one pass. */
   const layerAReport = (input, ctx, cache) => {
-    if (!cache.layerA) cache.layerA = root.LayerA.inspect(input.text, (ctx && ctx.layerAOptions) || {});
+    if (!cache.layerA) {
+      cache.layerA = root.Engine.call("layerAInspect", { text: input.text, options: (ctx && ctx.layerAOptions) || {} });
+    }
     return cache.layerA;
   };
   const hitsToEvidence = (hits) => hits.map((h) => ({
@@ -93,8 +98,8 @@
     register({
       id, layer: "character",
       applies: isText,
-      run(input, ctx, cache) {
-        const rep = layerAReport(input, ctx, cache);
+      async run(input, ctx, cache) {
+        const rep = await layerAReport(input, ctx, cache);
         const hits = rep.hits.filter((h) => kinds.includes(h.kind));
         const total = hits.reduce((n, h) => n + h.count, 0);
         const strong = hits.filter((h) => !informational.includes(h.kind));
@@ -126,10 +131,8 @@
       /* No bytes means the caller deliberately did not read the file: take the
        * slice driver, which reports the same shape from the headers alone. */
       cache.media = input.u8
-        ? (root.ImageMeta.detectFormat(input.u8) !== "unknown"
-          ? root.ImageMeta.inspect(input.u8)
-          : root.AvMeta.inspectAv(input.u8))
-        : root.AvMeta.inspectAvFile(input.file);
+        ? root.Engine.call("inspectImageBytes", { u8: input.u8 })
+        : root.Engine.call("inspectAvFile", { file: input.file });
     }
     return cache.media;
   };
@@ -190,10 +193,10 @@
   register({
     id: "stylometry", layer: "statistical", heuristic: true,
     applies: isText,
-    run(input) {
+    async run(input) {
       const def = byId("stylometry");
       if (!root.Stylometry || typeof root.Stylometry.score !== "function") return result(def, { status: "unavailable", noteKey: "inspect.noteNoStylometry" });
-      const rep = root.Stylometry.score(input.text);
+      const rep = await root.Engine.call("stylometryScore", { text: input.text });
       const evidence = [];
       if (rep.burstiness_cv != null) evidence.push({ label: "burstiness_cv", detail: String(rep.burstiness_cv) });
       if (rep.lexical_diversity != null) evidence.push({ label: "lexical_diversity", detail: String(rep.lexical_diversity) });
@@ -231,7 +234,7 @@
   register({
     id: "gumbel", layer: "statistical", local: true, requires_key: true, requires_model: false,
     applies: isText,
-    run(input, ctx) {
+    async run(input, ctx) {
       const def = byId("gumbel");
       if (!root.Gumbel || typeof root.Gumbel.detectText !== "function") {
         return result(def, { status: "unavailable", noteKey: "inspect.noteNoGumbel" });
@@ -241,9 +244,15 @@
       if (!key) return result(def, { status: "unavailable", noteKey: "inspect.noteNoGumbelKey" });
       let rep;
       try {
-        rep = root.Gumbel.detectText(input.text, key, {
-          window: cfg.window || root.Gumbel.DEFAULT_WINDOW,
-          threshold: cfg.threshold || root.Gumbel.DEFAULT_THRESHOLD,
+        /* The slowest detector in the registry by a distance: four pure-JS
+         * SHA-256 compressions per token, and the key never leaves the page. */
+        rep = await root.Engine.call("gumbelDetect", {
+          text: input.text,
+          key,
+          options: {
+            window: cfg.window || root.Gumbel.DEFAULT_WINDOW,
+            threshold: cfg.threshold || root.Gumbel.DEFAULT_THRESHOLD,
+          },
         });
       } catch (e) {
         return result(def, { status: "error", note: String((e && e.message) || e) });
