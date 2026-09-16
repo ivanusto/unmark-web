@@ -170,6 +170,7 @@ node scripts/check-upstream.mjs                                                 
 - `js/container_meta.js`，`container_meta.py` 文字標記那半的移植（SVG、HTML 與 Markdown frontmatter 的檢查與清除、把內嵌的 `data:image/…` URI 丟回圖片清除器、共用的生成器鍵名詞彙）。該檔的 ZIP 與 PDF 那半沒有移植，在瀏覽器裡也沒有對應物。
 - `js/stylometry.js`，`score_stylometry.py` 的移植（burstiness／MATTR／AI 片語密度；啟發式，不是浮水印偵測器）
 - `js/gumbel.js`，`detect_gumbel.py` 的移植（keyed-Gumbel／EXP 同金鑰重放，自帶同步版 SHA-256 與 HMAC，因此不需要 `crypto.subtle`，也不需要 secure context）
+- `js/engine.js`、`js/engine_ops.js`、`js/worker.js`，瀏覽器允許時，引擎的工作會跑在 Web Worker 裡。`engine_ops.js` 是不含 DOM 的操作表，兩邊都會載入它，所以 worker 與主執行緒跑的是同一份程式碼，不是兩份會各自漂移的副本。直接從檔案系統開啟的頁面起不了 worker，此時 `engine.js` 就地呼叫同一張表，呼叫端分辨不出差別。
 - `js/detectors.js`，檢測器的偵測器註冊表：字元、中繼資料、統計三層共用一種結果契約，加上給總結與前後對照用的 `summarize()`／`compare()`
 - `js/api.js`，`/health /capabilities /inspect /clean /detect` 的客戶端，以及選用的 `/llm-config`＋`/llm` 改寫呼叫與 `/stat-config`＋`/stat` sidecar 呼叫
 - `js/i18n.js`、`js/app.js`、`css/app.css`、`index.html`，UI（英文／繁體中文／簡體中文、淺色／深色、支援鍵盤操作）。語系依 `navigator.languages` 判斷並記在 `localStorage`；新增語言只需在 `js/i18n.js` 的 `LANGS` 加一列、再加一本字典。

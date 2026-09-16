@@ -112,11 +112,17 @@
   function textOptions() {
     return { normalizeSpaces: $("opt-spaces").checked, nfkc: $("opt-nfkc").checked, aggressiveHomoglyphs: $("opt-latin").checked, stripEmojiGlue: $("opt-glue").checked };
   }
-  function runText() {
+  /* The text tab runs on every keystroke (debounced), and the engine call is
+   * asynchronous now, so replies can arrive out of order. Only the newest one
+   * is allowed to paint. */
+  let textRun = 0;
+  async function runText() {
     const text = inputEl.value;
     const box = $("text-report-box"), tags = $("text-report-tags");
-    if (!text) { outputEl.textContent = ""; $("char-count-in").textContent = t("chars", { n: 0 }); $("char-count-out").textContent = t("chars", { n: 0 }); box.classList.remove("show"); clearRewriteOutput(); return; }
-    const { cleaned, stats } = LayerA.clean(text, textOptions());
+    if (!text) { textRun++; outputEl.textContent = ""; $("char-count-in").textContent = t("chars", { n: 0 }); $("char-count-out").textContent = t("chars", { n: 0 }); box.classList.remove("show"); clearRewriteOutput(); return; }
+    const run = ++textRun;
+    const { cleaned, stats } = await Engine.call("layerAClean", { text, options: textOptions() });
+    if (run !== textRun) return;   // a later keystroke already answered
     outputEl.textContent = cleaned;
     $("char-count-in").textContent = t("chars", { n: stats.input_length });
     $("char-count-out").textContent = t("chars", { n: stats.output_length });
@@ -420,7 +426,7 @@
       if (mode === "clean") {
         if (input.kind !== "text") { toast(t("inspectCleanTextOnly"), "⚠️"); }
         else {
-          const { cleaned } = LayerA.clean(input.text, textOptions());
+          const { cleaned } = await Engine.call("layerAClean", { text: input.text, options: textOptions() });
           insp.cleanedText = cleaned;
           $("inspect-status").textContent = t("inspectReRunning");
           const after = await Detectors.runAll({ kind: "text", text: cleaned }, ctx);
@@ -621,18 +627,20 @@
 
   async function cleanInBrowser(file, ext) {
     if (IMAGE_EXT.has(ext)) {
-      const u8 = new Uint8Array(await file.arrayBuffer());
-      const before = ImageMeta.inspect(u8);
-      const r = ImageMeta.clean(u8, { stripAllMetadata: !$("opt-keep-meta").checked });
+      /* The File goes to the worker by reference, so nothing is copied on the
+       * way in, and the cleaned bytes come back as a transferred buffer. */
+      const r = await Engine.call("cleanImageFile", { file, stripAllMetadata: !$("opt-keep-meta").checked });
+      const before = r.before;
       const mime = IMAGE_MIME[r.format] || "application/octet-stream";
       const findings = [];
       if (before.has_c2pa) findings.push(t("c2paFound")); else if (before.has_ai_metadata) findings.push(t("aiMetaFound"));
       findings.push(...before.findings, ...r.actions);
-      return { blob: new Blob([r.data], { type: mime }), findings, suspicious: before.has_ai_metadata };
+      return { blob: new Blob([r.buffer], { type: mime }), findings, suspicious: before.has_ai_metadata };
     }
     if (AV_EXT.has(ext)) {
-      const before = await AvMeta.inspectAvFile(file);
-      const r = await AvMeta.cleanAvFile(file, {
+      const before = await Engine.call("inspectAvFile", { file });
+      const r = await Engine.call("cleanAvFile", {
+        file,
         stripAllMetadata: !$("opt-keep-meta").checked,
         type: avMime(before.format, ext),
       });
@@ -650,43 +658,29 @@
     }
     if (CONTAINER_KIND[ext]) {
       const kind = CONTAINER_KIND[ext];
-      const u8 = new Uint8Array(await file.arrayBuffer());
+      /* The container clean and the Layer A pass over the body happen together
+       * in the engine, in that order, which is what upstream's clean_container
+       * does for markdown and HTML. SVG gets the Layer A pass too: upstream
+       * does not, but it is text with a schema and invisible carriers sit in
+       * it the same way. The decode is surrogateescape, so a file that is not
+       * valid UTF-8 comes back byte for byte minus what was removed. */
+      const r = await Engine.call("cleanContainerFile", { file, kind, layerAOptions: textOptions() });
+      const before = r.before;
       const findings = [];
-      let before;
-      let cleaned;
-      /* Decode the way upstream does, with surrogateescape rather than a
-       * replacement character: a file that is not valid UTF-8 has to come back
-       * out byte for byte, minus what was removed on purpose. */
-      if (kind === "svg") {
-        before = ContainerMeta.inspectSvg(u8);
-        const r = ContainerMeta.cleanSvg(u8);
-        findings.push(...r.actions);
-        cleaned = ContainerMeta.decodeUtf8(r.data, "surrogateescape");
-      } else {
-        const text = ContainerMeta.decodeUtf8(u8, "surrogateescape");
-        before = kind === "html" ? ContainerMeta.inspectHtml(text) : ContainerMeta.inspectMarkdown(text);
-        const r = kind === "html" ? ContainerMeta.cleanHtml(text) : ContainerMeta.cleanMarkdown(text);
-        findings.push(...r.actions);
-        cleaned = r.text;
-      }
-      if (before.hasC2pa) findings.unshift(t("c2paFound"));
-      else if (before.hasAi) findings.unshift(t("aiMetaFound"));
-      // Then Layer A over the body, which is what upstream's also_layer_a_text
-      // does for markdown and HTML. SVG gets it here too: it is text with a
-      // schema, and invisible carriers sit in it the same way.
-      const { cleaned: afterA, stats } = LayerA.clean(cleaned, textOptions());
-      for (const [label, n] of Object.entries(stats.removed)) findings.push(t("removedTag", { n, label }));
-      for (const [label, n] of Object.entries(stats.replaced)) findings.push(label === "NFKC_normalize" ? t("nfkcTag", { n }) : t("replacedTag", { n, label }));
+      if (before.hasC2pa) findings.push(t("c2paFound"));
+      else if (before.hasAi) findings.push(t("aiMetaFound"));
+      findings.push(...r.actions);
+      for (const [label, n] of Object.entries(r.stats.removed)) findings.push(t("removedTag", { n, label }));
+      for (const [label, n] of Object.entries(r.stats.replaced)) findings.push(label === "NFKC_normalize" ? t("nfkcTag", { n }) : t("replacedTag", { n, label }));
       findings.push(t("containerNote"));
       return {
-        blob: new Blob([ContainerMeta.encodeUtf8(afterA)], { type: CONTAINER_MIME[kind] }),
+        blob: new Blob([r.buffer], { type: CONTAINER_MIME[kind] }),
         findings,
-        suspicious: before.hasAi || before.hasC2pa || stats.removed_count > 0,
+        suspicious: before.hasAi || before.hasC2pa || r.stats.removed_count > 0,
       };
     }
     if (PLAIN_TEXT_EXT.has(ext)) {
-      const text = await file.text();
-      const { cleaned, stats } = LayerA.clean(text, textOptions());
+      const { cleaned, stats } = await Engine.call("cleanTextFile", { file, layerAOptions: textOptions() });
       const findings = [];
       for (const [label, n] of Object.entries(stats.removed)) findings.push(t("removedTag", { n, label }));
       for (const [label, n] of Object.entries(stats.replaced)) findings.push(label === "NFKC_normalize" ? t("nfkcTag", { n }) : t("replacedTag", { n, label }));
