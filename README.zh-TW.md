@@ -186,6 +186,17 @@ node scripts/check-upstream.mjs                                                 
 
 各版完整說明見 [releases](https://github.com/ivanusto/unmark-web/releases)。
 
+### [v0.7.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.7.0)
+
+- **SVG、HTML 與 Markdown 現在在本機清理，不必再交給伺服器。** 這三種格式從第一版就在接受清單裡，但只當成文字處理：對內容套用 Layer A，然後用一行 findings 說裡面的中繼資料要靠 Python 服務。上游 `container_meta.py` 的文字標記那半其實是純正則與字串處理，沒有 zipfile、沒有 PDF、沒有 subprocess、也沒有網路，原封不動就能在頁面裡跑。SVG 會失去 `<metadata>` 與 `<x:xmpmeta>` 區塊、XML 的 DOCTYPE 與 ENTITY 宣告（[#288](https://github.com/guillaumemeyer/watermarks-remover/pull/288)）、帶 AI 標記的註解，以及根元素上像生成器的屬性；HTML 會失去指名生成器的 `<meta>` 標籤、JSON-LD 來源標記區塊與 `data-ai*` 屬性，而單純的 CMS generator 標籤會留著；Markdown 會失去 AI frontmatter 鍵連同其下的巢狀行。三者共通：內嵌的 `data:image/…` 會被丟回本移植早就有的 PNG、JPEG、WebP、ISOBMFF 清除器，然後才對內容套用 Layer A，這個順序與上游 `clean_container` 一致。
+- **不是有效 UTF-8 的檔案會逐位元原樣回來。** 上游對這些格式用 `surrogateescape` 解碼、最後再編碼回去；而本頁先前是用 `File.text()` 讀，遇到非法位元組會換成替換字元，於是檔案是被改寫而不是被清理。上游用到的兩種解碼模式都在 `js/container_meta.js` 裡手寫出來，因為 `TextDecoder` 兩種都不提供，而且是直接拿隨機位元組對 CPython 驗證。
+- **有一個上游缺陷我們刻意不跟。** `_iter_script_blocks` 與 `_iter_data_uris` 會先把整份文件轉小寫來找 `<script` 與 `data:image/`，再拿結果的位移去切原字串。這只在轉小寫不改變長度時成立，而 `U+0130`（帶點的大寫 I）在 Python 與 JavaScript 裡都會變成兩個字元。只要檔案稍早處有一個這種字元，上游的 `inspect_html` 對一份 JSON-LD 寫著 `trainedAlgorithmicMedia` 的文件會回報「沒發現」、`clean_html` 也不會動它，而內嵌的 PNG 會被解析成 MIME 類型 `ng` 加一段被截斷的 payload。一個土耳其文或亞塞拜然文的字元就夠了。本移植只轉 ASCII 的小寫，長度不可能改變。這個分歧在兩個方向都有斷言，上游若修好會立刻失敗提醒。
+- **引擎搬進 Web Worker。** 64 MiB 的圖片要在一趟同步流程裡掃描並重建，keyed-Gumbel 每個 token 要做四次純 JS 的 SHA-256 壓縮，文風統計的樣式表則是每條樣式都掃過全文一次（本機實測：1 MB 純 ASCII 為 383 ms，同一段文字帶零寬字元則是 1692 ms）。這些現在都不在繪製頁面的那條執行緒上。`File` 以參照傳遞，清理後的位元組以轉移方式傳回，兩個方向都不複製。直接從檔案系統開啟的頁面起不了 worker，此時同一張操作表就地執行，呼叫端分辨不出差別。
+- **檢測器分頁不再拒絕清理分頁收得下的錄影。** 它先前整份讀入，對音訊與影片也套用 64 MiB 上限，而清理分頁自 v0.4.0 起就因為切片 driver 而豁免它們。偵測器的 input 契約現在可以帶位元組或帶 `File`，五個中繼資料偵測器共用同一趟標頭掃描。
+- **本機上游 checkout 過舊會讓整輪測試中止。** `tests/test_contains_any_parity.py` 在自己的 `skipif` 之外、於 import 期讀取一個標記清單，那裡的 `AttributeError` 會終結所有檔案的收集：*965 collected, 1 error*。現在改用 `getattr` 讀取，缺少清單的那組會以 skip 回報，而不是無聲消失。
+- dropzone 一行說 EPUB 需要伺服器、下一行又提供它；兩份 README 的逐行移植清單都漏了自 v0.4.0 就在的 `av_meta.py`；三個語系各有兩個沒人用的字串鍵。九支 script 移進 head 並加上 `defer`，讓下載與解析重疊而不是排在它後面。
+- 新的 parity 錨點：`container_meta.py` 以六個切片追蹤，因為它有 4000 行，而其中大部分是本專案沒有對應物的 ZIP 與 PDF 處理。檢查現在涵蓋十二個來源。1403 個測試。
+
 ### [v0.6.2](https://github.com/ivanusto/unmark-web/releases/tag/v0.6.2)
 
 - **PNG 文字區塊不再能無上限解壓**。[guillaumemeyer/watermarks-remover#308](https://github.com/guillaumemeyer/watermarks-remover/pull/308) 把解壓後的 `zTXt`／`iTXt` 內容上限訂在 1 MiB：PNG 的文字欄位是中繼資料，不是文件，而幾百 KB 精心構造的 deflate 可以膨脹成幾百 MB，接著標記掃描還會把它再複製一份。這種區塊現在由 `inspectPng` 回報為「未完整檢查」，而不是安靜地從檢測結果裡消失；`stripPng` 連「保留非 AI 中繼資料」模式都會把它移除，因為沒人讀得完的區塊，也沒人能替它背書。同一個改動也讓 deflate 串流中途斷掉的文字區塊被掃描到它解得出來的地方為止，而不是整塊丟掉。
