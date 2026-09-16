@@ -1436,11 +1436,16 @@
   /* AI_META_HINTS, C2PA_MARKERS and the four ISOBMFF primitives are exported for
    * js/av_meta.js, mirroring what upstream's av_meta.py imports from
    * image_meta.py. Audio and video reuse this box walker rather than carrying a
-   * second one. */
+   * second one. AI_GENERATOR_PRODUCTS and the per-format inspect/strip pairs go
+   * out for js/container_meta.js, which mirrors what container_meta.py imports
+   * from here: the same product vocabulary decides whether an HTML meta or a
+   * frontmatter key names a generator, and an image inside a data: URI is
+   * cleaned by these same functions. */
   const api = { detectFormat, inspect, clean, inspectPng, inspectJpeg, inspectWebp, inspectIsobmff,
     inspectBmp, inspectGif, inspectTiff,
     stripPng, stripJpeg, stripWebp, stripIsobmff, stripBmp, stripGif, stripTiff, containsAny,
-    parseIsobmffBoxes, buildIsobmffBox, isobmffFreeBox, containsC2paProvBox, AI_META_HINTS, C2PA_MARKERS };
+    parseIsobmffBoxes, buildIsobmffBox, isobmffFreeBox, containsC2paProvBox,
+    AI_META_HINTS, C2PA_MARKERS, AI_GENERATOR_PRODUCTS };
   root.ImageMeta = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

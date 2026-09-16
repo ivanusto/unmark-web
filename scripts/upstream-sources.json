@@ -1,5 +1,5 @@
 {
-  "note": "The Python modules js/layer_a.js, js/image_meta.js, js/av_meta.js, js/stylometry.js and js/gumbel.js were ported from the upstream sources listed below. scripts/check-upstream.mjs compares the live content against these hashes. The parity suite proves the ported behaviour still matches for the cases it covers; this catches the rest: new options, new formats, anything the fixtures do not exercise. When one moves, re-port it and update `sha256` in the same commit.",
+  "note": "The Python modules js/layer_a.js, js/image_meta.js, js/av_meta.js, js/container_meta.js, js/stylometry.js and js/gumbel.js were ported from the upstream sources listed below. Some sources are tracked one definition or one range of definitions at a time rather than whole-file, through `slice`: container_meta.py and common.py are mostly filesystem, ZIP, PDF and subprocess plumbing that has no browser counterpart, and an issue that is usually noise is an issue nobody reads. scripts/check-upstream.mjs compares the live content against these hashes. The parity suite proves the ported behaviour still matches for the cases it covers; this catches the rest: new options, new formats, anything the fixtures do not exercise. When one moves, re-port it and update `sha256` in the same commit.",
   "followUp": "If the parity suite is still green, the change is probably additive: a new format or option the fixtures do not reach. Add fixtures covering it, or the gap stays invisible the next time too.",
   "sources": [
     {
@@ -68,6 +68,66 @@
         "tests/test_finding_confidence_parity.py"
       ],
       "comment": "Tracked as one definition, not as a file. classify_finding_confidence is the only thing js/stylometry.js mirrors from common.py, because StylometryReport.to_dict() calls it; the rest of common.py is filesystem and subprocess plumbing with no browser counterpart (read_text_input, backup_path, safe_write_bytes, the tool probes). Hashing the whole file would open a drift issue every time upstream touched any of that, and an issue that is usually noise is an issue nobody reads. Added after upstream #273 changed this function, classifying Layer A space homoglyphs as informational, and nothing here noticed."
+    },
+    {
+      "id": "watermarks-remover/service/scripts/container_meta.py#ai-vocabulary",
+      "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/container_meta.py",
+      "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/container_meta.py",
+      "sha256": "0344931dc7da1af568bc3c03871fdfdfb3e5e46ce081a9ccd6b5c7b5514a1192",
+      "slice": {
+        "from": "^AI_FRONTMATTER_KEYS = frozenset\\(",
+        "until": "^SVG_DROP_TAGS = frozenset\\("
+      },
+      "mirrors": [
+        "js/container_meta.js",
+        "tests/test_container_meta_parity.py"
+      ],
+      "comment": "AI_FRONTMATTER_KEYS, AI_META_NAME_RE, GENERATOR_NAME_KEYS, AI_FREE_TEXT_MARKER_RE and named_value_is_ai. Tracked as a range of definitions rather than as a file: container_meta.py is 4,000 lines and most of it is ZIP and PDF work built on zipfile, tempfiles and external tools, with no browser counterpart, so hashing the whole file would open a drift issue every time any of that moved. This is the rule upstream #336 and #342 settled: a value names a generator only under one of GENERATOR_NAME_KEYS, where it is matched against image_meta's AI_GENERATOR_PRODUCTS; every other name carries free prose and is matched only against markers that are never ordinary English."
+    },
+    {
+      "id": "watermarks-remover/service/scripts/container_meta.py#data-uris",
+      "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/container_meta.py",
+      "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/container_meta.py",
+      "sha256": "9efdac5d66d41ce8e75800acef698655dbbfb1d87a2a4a6afa7459ea5b90e3b6",
+      "slice": {
+        "from": "^def _blob_hits\\(",
+        "until": "^def _iter_tag_blocks\\("
+      },
+      "mirrors": [
+        "js/container_meta.js",
+        "tests/test_container_meta_parity.py"
+      ],
+      "comment": "_blob_hits and the embedded data-URI scanner (_iter_data_uris, _skip_data_uri_candidate, _inspect_embedded_data_uris, _clean_embedded_data_uris), ported in full. Upstream #306 rewrote these from regexes into linear character scans to remove a polynomial ReDoS; the reasoning holds here for a different reason, since what it stalls in a browser is the tab rather than a single-process service. An image inside a data: URI is handed to the same strip_png/strip_jpeg/strip_webp/strip_isobmff this port already mirrors."
+    },
+    {
+      "id": "watermarks-remover/service/scripts/container_meta.py#tag-blocks",
+      "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/container_meta.py",
+      "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/container_meta.py",
+      "sha256": "9554a5fb001530f30f4e2c0e7710d03d70112772a799dbf4094b40cf64d38e34",
+      "slice": {
+        "from": "^def _iter_tag_blocks\\(",
+        "until": "^_FM_RE = re\\.compile"
+      },
+      "mirrors": [
+        "js/container_meta.js",
+        "tests/test_container_meta_parity.py"
+      ],
+      "comment": "_iter_tag_blocks, _drop_tag_blocks and _drop_blocks_if: the linear pairing of opening and closing tags that replaced the lazy '.*?</close>' idiom, preserving its match semantics."
+    },
+    {
+      "id": "watermarks-remover/service/scripts/container_meta.py#svg",
+      "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/container_meta.py",
+      "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/container_meta.py",
+      "sha256": "3dd38c916f2e7ba756bda3cb51b329f339ec636202ca7cb1ed1aa219b9a2fcfe",
+      "slice": {
+        "from": "^_SVG_METADATA_OPEN_RE = re\\.compile",
+        "until": "^_ODT_GENERATOR_OPEN_RE = re\\.compile"
+      },
+      "mirrors": [
+        "js/container_meta.js",
+        "tests/test_container_meta_parity.py"
+      ],
+      "comment": "The whole SVG section: the block regexes, inspect_svg, the XML declaration scanners from upstream #288 (_xml_decl_keyword, _xml_decl_end, _strip_xml_declarations), _strip_root_svg_attrs and clean_svg. Ported in full. Note the two decode modes, which are not interchangeable: clean_svg uses surrogateescape so a file that is not valid UTF-8 survives byte for byte, while inspect_svg uses replace. js/container_meta.js writes both out by hand, because TextDecoder offers neither."
     }
   ]
 }

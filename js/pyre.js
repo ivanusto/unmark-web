@@ -79,7 +79,21 @@
     return new RegExp(translatePyPattern(src), ignoreCase ? "giu" : "gu");
   }
 
-  const api = { W_CLASS, S_CLASS, B_BOUNDARY, translatePyPattern, compilePy, pyStrip, pySplitlines, RE_ALL_SPACE };
+  const RE_ALNUM_CHAR = /^[\p{L}\p{N}]$/u;
+  const RE_SPACE_CHAR = new RegExp("^[" + S_CLASS + "]$", "u");
+
+  /** Python str.isalnum() for a single character (letters and numerics, no "_"). */
+  function pyIsAlnum(ch) {
+    return RE_ALNUM_CHAR.test(ch);
+  }
+
+  /** Python str.isspace() for a single character. */
+  function pyIsSpace(ch) {
+    return RE_SPACE_CHAR.test(ch);
+  }
+
+  const api = { W_CLASS, S_CLASS, B_BOUNDARY, translatePyPattern, compilePy, pyStrip, pySplitlines,
+    pyIsAlnum, pyIsSpace, RE_ALL_SPACE };
   root.PyRe = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
