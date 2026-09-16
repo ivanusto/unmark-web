@@ -35,19 +35,36 @@ pytestmark = pytest.mark.skipif(
     reason="needs node and an upstream checkout (WATERMARKS_UPSTREAM_DIR)",
 )
 
+# The marker lists each set is built from, by attribute name. Read through
+# getattr rather than attribute access: this runs at import time, outside the
+# skipif above, so an upstream checkout that predates one of these lists used
+# to raise AttributeError there - and one error at collection time aborts the
+# whole suite, not just this file. A checkout too old to carry a list now
+# drops that set and says so, which is the same shape as a missing checkout.
+_SET_SOURCES = {
+    "c2pa": ("C2PA_MARKERS",),
+    "ai_meta": ("AI_META_HINTS",),
+    "all_hints": ("AI_META_HINTS", "C2PA_MARKERS"),
+    "jpeg_c2pa": ("JPEG_C2PA_MARKERS",),
+    "jpeg_com": ("JPEG_COM_AI_HINTS",),
+}
+
+NEEDLE_SETS: dict[str, tuple] = {}
+MISSING_ATTRS: set[str] = set()
+
 if (SCRIPTS / "image_meta.py").is_file():
     sys.path.insert(0, str(SCRIPTS))
     import image_meta  # type: ignore  # noqa: E402
 
-    NEEDLE_SETS = {
-        "c2pa": image_meta.C2PA_MARKERS,
-        "ai_meta": image_meta.AI_META_HINTS,
-        "all_hints": image_meta.AI_META_HINTS + image_meta.C2PA_MARKERS,
-        "jpeg_c2pa": image_meta.JPEG_C2PA_MARKERS,
-        "jpeg_com": image_meta.JPEG_COM_AI_HINTS,
-    }
-else:  # pragma: no cover - the whole module skips
-    NEEDLE_SETS = {}
+    for _name, _attrs in _SET_SOURCES.items():
+        _lists = [getattr(image_meta, _a, None) for _a in _attrs]
+        if any(_l is None for _l in _lists):
+            MISSING_ATTRS.update(_a for _a, _l in zip(_attrs, _lists) if _l is None)
+            continue
+        _needles = _lists[0]
+        for _extra in _lists[1:]:
+            _needles = _needles + _extra
+        NEEDLE_SETS[_name] = _needles
 
 
 def _filler(n: int, seed: int) -> bytes:
@@ -89,3 +106,14 @@ def test_contains_any_parity(set_name: str, blob_name: str) -> None:
     expected = image_meta._contains_any(data, needles)
     decoded = [n.decode("ascii", errors="replace") for n in needles]
     assert _js(data, decoded) == expected, (set_name, blob_name)
+
+
+def test_upstream_exposes_every_marker_list() -> None:
+    """A list this file names but upstream does not have leaves a hole.
+
+    Reported as a skip rather than swallowed: the sets above are dropped
+    silently otherwise, and "N passed" would read the same either way. This is
+    the same lesson as running the suite with -rs.
+    """
+    if MISSING_ATTRS:
+        pytest.skip("upstream image_meta has no " + ", ".join(sorted(MISSING_ATTRS)))

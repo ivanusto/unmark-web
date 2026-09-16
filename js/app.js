@@ -438,7 +438,8 @@
     const input = inspectInput();
     const rep = {
       schema: "unmark-inspector/1", generated_at: new Date().toISOString(), page: location.origin + location.pathname,
-      input: input.kind === "text" ? { kind: "text", length: input.text.length } : { kind: "file", name: input.name, bytes: input.u8.length },
+      input: input.kind === "text" ? { kind: "text", length: input.text.length }
+        : { kind: "file", name: input.name, bytes: input.u8 ? input.u8.length : input.file.size },
       key_profile: $("inspect-key").value || "a",
       // Settings only, never the key itself: the report is meant to be pasted
       // into a bug thread.
@@ -452,21 +453,27 @@
 
   function setInspectFile(file) {
     if (!file) { insp.input = null; $("inspect-file-name").textContent = ""; inspText.disabled = false; return; }
-    /* Unlike the clean tab this reads the whole input: the detector registry is
-     * synchronous and every detector wants the bytes. Refuse oversized files
-     * rather than letting a long recording take the tab down with it. */
+    const ready = (input) => {
+      insp.input = input;
+      $("inspect-file-name").textContent = t("inspectFileLoaded", { name: file.name, size: fmtBytes(file.size) });
+      inspText.disabled = true;
+      insp.results = null; insp.compare = null; renderInspect();
+    };
+    /* Audio and video reach the detectors as the File itself. AvMeta's slice
+     * driver reads box and chunk headers through File.slice(), so the media
+     * never enters memory and the cap that exists to keep a tab alive has
+     * nothing to cap - the same reason the clean tab exempts them. */
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    if (AV_EXT.has(ext)) { ready({ kind: "file", name: file.name, file }); return; }
+    /* Everything else is still read whole: the image detectors want the bytes,
+     * so refuse an oversized file rather than let it take the tab down. */
     if (file.size > BROWSER_MAX_BYTES) {
       $("inspect-file-name").textContent = t("errTooLarge", {
         size: fmtBytes(file.size), limit: fmtBytes(BROWSER_MAX_BYTES), engine: t("viaBrowser"),
       });
       return;
     }
-    file.arrayBuffer().then((buf) => {
-      insp.input = { kind: "file", name: file.name, u8: new Uint8Array(buf) };
-      $("inspect-file-name").textContent = t("inspectFileLoaded", { name: file.name, size: fmtBytes(file.size) });
-      inspText.disabled = true;
-      insp.results = null; insp.compare = null; renderInspect();
-    });
+    file.arrayBuffer().then((buf) => ready({ kind: "file", name: file.name, file, u8: new Uint8Array(buf) }));
   }
 
   async function runStatDemo() {

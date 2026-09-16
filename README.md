@@ -13,7 +13,7 @@ Independent, browser-first web client for **[guillaumemeyer/watermarks-remover](
 
 - **Runs entirely in the browser** for text (Layer A: invisible Unicode / homoglyph spaces) and PNG / JPEG / WebP / AVIF / HEIC / BMP / GIF / TIFF metadata (C2PA, EXIF, XMP, text chunks). No uploads, no analytics, no web fonts, no third-party requests.
 - **Optionally drives the upstream Python service** (`server.py`) for everything else: PDF, DOCX, ODT, EPUB, full HTML/SVG/Markdown container cleaning, and pixel-domain backends.
-- The JavaScript engines are **line-for-line ports of upstream's `text_unicode.py`, `image_meta.py`, `score_stylometry.py` and `detect_gumbel.py`**, and a parity test suite asserts identical output (same characters kept/stripped, same bytes out of the image parsers, same stylometry numbers, same keyed-Gumbel p-value).
+- The JavaScript engines are **line-for-line ports of upstream's `text_unicode.py`, `image_meta.py`, `av_meta.py`, `score_stylometry.py` and `detect_gumbel.py`**, and a parity test suite asserts identical output (same characters kept/stripped, same bytes out of the image and media parsers, same stylometry numbers, same keyed-Gumbel p-value).
 - A **Watermark Inspector** tab runs every detector on one input and reports each separately across the character, metadata and statistical layers, and can re-run them after a Layer A clean to show what the cleaner did *not* touch. Keyed-Gumbel (EXP) detection runs in the page itself; the other statistical detectors (Kirchenbauer, SynthID-Text) run through an optional local sidecar.
 
 Live demo: [https://ivanusto.github.io/unmark-web/](https://ivanusto.github.io/unmark-web/) · Local: open `index.html` or run `python3 serve_local.py`.
@@ -46,10 +46,11 @@ Three consequences of the container rules that surprise people:
   chunk or ISOBMFF box declares more bytes than the file holds. That tail is copied through
   verbatim and reported as an action, so a recoverable image is not turned into an unopenable
   husk that claims it was already clean.
-* **Audio and video never enter memory.** The clean tab reads box and chunk headers through
-  `File.slice()` and hands the browser a `Blob` of slices of the original file, so a
-  multi-gigabyte recording is cleaned without holding it. Only the metadata regions are read.
-  The Inspector tab still reads its input whole and keeps the 64 MiB limit.
+* **Audio and video never enter memory.** Both the clean tab and the Inspector read box and
+  chunk headers through `File.slice()`, so a multi-gigabyte recording is handled without
+  holding it and the 64 MiB limit does not apply to it. Only the metadata regions are read.
+  Images and text are still read whole in both tabs, and keep the limit: the parsers that
+  handle them want the bytes.
 
 ## Connecting a server
 

@@ -18,7 +18,12 @@
  * detector exists but was not exercised, "not_applicable" means the input type
  * does not fit (image detectors on text).
  *
- * Inputs: { kind:"text", text } or { kind:"file", name, u8 }.
+ * Inputs: { kind:"text", text }, or { kind:"file", name, u8 } for a file held in
+ * memory, or { kind:"file", name, file } for one that is not. The second form
+ * is how audio and video arrive: AvMeta's slice driver reads box and chunk
+ * headers through File.slice(), so a two-hour recording costs no more than a
+ * two-second one and needs no size limit. Detectors that want the bytes
+ * declare so through applies().
  * Detectors must not mutate the input; cleaning is a separate step so the
  * Inspector can honestly show whether cleaning changed each detector's answer.
  */
@@ -110,18 +115,23 @@
   characterDetector("homoglyph", ["confusable", "space"], { informational: ["space"] });
 
   // ------------------------------------------------------------ metadata layer (image containers)
-  const isFile = (input) => !!input && input.kind === "file" && input.u8 instanceof Uint8Array;
+  const isBlob = (x) => typeof Blob !== "undefined" && x instanceof Blob;
+  const isFile = (input) => !!input && input.kind === "file" && (input.u8 instanceof Uint8Array || isBlob(input.file));
   /* Image containers first, then the audio and video ones. Both inspectors
    * report the same {has_c2pa, has_ai_metadata, findings} shape, and the
    * buckets below are regexes over the finding prose, so MP4, WAV, MP3 and
    * FLAC findings sort themselves without a second bucket table. */
-  const imageReport = (input, cache) => {
-    if (!("image" in cache)) {
-      cache.image = root.ImageMeta.detectFormat(input.u8) !== "unknown"
-        ? root.ImageMeta.inspect(input.u8)
-        : root.AvMeta.inspectAv(input.u8);
+  const mediaReport = async (input, cache) => {
+    if (!("media" in cache)) {
+      /* No bytes means the caller deliberately did not read the file: take the
+       * slice driver, which reports the same shape from the headers alone. */
+      cache.media = input.u8
+        ? (root.ImageMeta.detectFormat(input.u8) !== "unknown"
+          ? root.ImageMeta.inspect(input.u8)
+          : root.AvMeta.inspectAv(input.u8))
+        : root.AvMeta.inspectAvFile(input.file);
     }
-    return cache.image;
+    return cache.media;
   };
   /* ImageMeta.inspect() reports prose findings (kept upstream-shaped for the
    * parity suite), so the buckets are regexes over those strings. Anything that
@@ -146,9 +156,9 @@
     register({
       id, layer: "metadata",
       applies: isFile,
-      run(input, ctx, cache) {
+      async run(input, ctx, cache) {
         const def = byId(id);
-        const rep = imageReport(input, cache);
+        const rep = await mediaReport(input, cache);
         if (!rep) return result(def, { status: "not_applicable", noteKey: "inspect.noteUnsupportedFile" });
         if (!cache.buckets) cache.buckets = bucketFindings(rep.findings || []);
         const lines = cache.buckets[id];
