@@ -9,8 +9,8 @@
 
 **[guillaumemeyer/watermarks-remover](https://github.com/guillaumemeyer/watermarks-remover)** 的獨立瀏覽器優先網頁客戶端，靈感來自該專案，並相容於它的 HTTP API。與上游專案無隸屬關係。
 
-- **完全在瀏覽器中執行**：文字（Layer A：隱形 Unicode／同形字空白）與 PNG／JPEG／WebP／AVIF／HEIC／BMP／GIF／TIFF 中繼資料（C2PA、EXIF、XMP、文字區塊）皆是。不上傳、不做分析追蹤、不載入網頁字型、不發送任何第三方請求。
-- **可選擇驅動上游的 Python 服務**（`server.py`）處理其餘格式，PDF、DOCX、ODT、EPUB、完整的 HTML／SVG／Markdown 容器清理，以及像素域後端。
+- **完全在瀏覽器中執行**：文字（Layer A：隱形 Unicode／同形字空白）、PNG／JPEG／WebP／AVIF／HEIC／BMP／GIF／TIFF 與 MP4／MOV／M4A／WAV／MP3／FLAC 的中繼資料（C2PA、EXIF、XMP、文字區塊、ID3），以及 SVG／HTML／Markdown 容器（中繼資料區塊、`<meta generator>`、JSON-LD 來源標記、frontmatter 鍵、內嵌的 `data:` 圖片）。不上傳、不做分析追蹤、不載入網頁字型、不發送任何第三方請求。
+- **可選擇驅動上游的 Python 服務**（`server.py`）處理其餘格式：PDF、DOCX、XLSX、PPTX、ODT、EPUB、LaTeX，以及像素域後端。
 - JavaScript 引擎是上游 **`text_unicode.py`、`image_meta.py`、`av_meta.py`、`score_stylometry.py` 與 `detect_gumbel.py` 的逐行移植**，並有一套 parity 測試驗證輸出完全一致（保留／移除的字元相同，圖片與影音解析器輸出的位元組相同，文風統計的數字相同，keyed-Gumbel 的 p 值也相同）。
 - **「檢測器」分頁**是一個偵測實驗室：對同一份輸入跑過每一個偵測器並分別回報，字元層、中繼資料層、統計層，還能在 Layer A 清理後重新檢測，讓你看清楚清理器*沒有*動到哪一層。Keyed-Gumbel（EXP）偵測直接在頁面裡跑；其餘統計型偵測器（Kirchenbauer、SynthID-Text）透過選用的本機 sidecar 執行。
 
@@ -26,7 +26,7 @@
 | 輸入 | 瀏覽器引擎 | 伺服器引擎（`server.py`） |
 | --- | --- | --- |
 | 貼上的文字 / `.txt` | Layer A：零寬與 bidi 控制字元、變體選擇符、tag 字元、PUA、Unicode 非字元、保留的預設可忽略字元、其他 `Cf`；空白同形字；可選的 NFKC／拉丁易混字元處理。與上游一致地保留具功能性的隱形字元（emoji 的 ZWJ/VS16、波斯文／印度系文字的 ZWNJ、旗幟 tag、蒙古文 FVS、高棉文母音、諺文填充字元、阿拉伯文 `Cf`，以及緊鄰自身書寫系統的排版控制字元：埃及聖書體象限、Duployan 速記、音樂符號連桿），並提供「偏執模式」開關。 | 同左 |
-| `.md` `.html` `.svg` | 僅對文字內容套用 Layer A（中繼資料標籤／frontmatter 不動，UI 會標示） | 完整容器清理（frontmatter 鍵、`<meta generator>`、XMP……） |
+| `.md` `.html` `.svg` | 完整容器清理，再對內容套用 Layer A。SVG：`<metadata>` 與 `<x:xmpmeta>` 區塊、XML 的 DOCTYPE／ENTITY 宣告、帶 AI 標記的註解、根元素上像生成器的屬性。HTML：指名生成器的 `<meta>` 標籤、JSON-LD 來源標記區塊、`data-ai*` 屬性。Markdown：AI frontmatter 鍵連同其下的巢狀行。三者共通：內嵌的 `data:image/…` 會被丟回圖片清除器。非 UTF-8 的檔案會逐位元原樣回來，只少掉刻意移除的部分。 | 同左，另加 ZIP 與 PDF 容器 |
 | PNG / JPEG / WebP / AVIF / HEIC | 移除 `tEXt/zTXt/iTXt/eXIf/caBX/c2*` 區塊、`APPn`（JFIF 除外）與 `COM` 區段、`EXIF/XMP/ICCP/C2PA` RIFF 區塊並修正 VP8X 旗標，以及 ISOBMFF 的 `jumb/c2pa/uuid` 盒與其 `meta` 子盒，涵蓋 XMP 的 user type 與 C2PA 來源標記的 user type `d8fec3d6-…`。像素不動（不經 canvas 重新編碼）。「保留非 AI 中繼資料」模式只移除帶有 AI／C2PA 跡象的區塊。 | 同左，若有安裝則額外提供像素域後端 |
 | BMP / GIF / TIFF | BMP：移除像素資料之後的尾端位元組（BMP 中繼資料唯一可能存在的位置）並改寫檔案大小欄位。GIF：移除註解與 XMP／未知的 application extension，保留 NETSCAPE2.0 循環與 ICC。TIFF（classic 與 BigTIFF）：走訪 IFD 鏈並移除 XMP／EXIF／GPS／IPTC／Photoshop／MakerNote 標籤，逐一原地修補 IFD，讓 strip 與 tile 的 offset 保持有效。 | 同左 |
 | PDF / DOCX / ODT / EPUB | 不支援（需要伺服器） | 支援 |
