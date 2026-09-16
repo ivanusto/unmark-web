@@ -22,7 +22,12 @@
     wav: { wav: "audio/wav" }, mp3: { mp3: "audio/mpeg" }, flac: { flac: "audio/flac" },
   };
   const avMime = (format, ext) => (AV_MIME[format] || {})[ext] || "application/octet-stream";
-  const TEXT_EXT = new Set(["txt", "md", "markdown", "html", "htm", "svg"]);
+  const PLAIN_TEXT_EXT = new Set(["txt"]);
+  /* Markup that carries metadata of its own, keyed by which upstream container
+   * handler cleans it. These used to get Layer A over the body and nothing
+   * else, with a note saying the metadata inside needed a server. */
+  const CONTAINER_KIND = { svg: "svg", html: "html", htm: "html", md: "markdown", markdown: "markdown" };
+  const CONTAINER_MIME = { svg: "image/svg+xml", html: "text/html;charset=utf-8", markdown: "text/markdown;charset=utf-8" };
   const SERVER_ONLY_EXT = new Set(["pdf", "docx", "odt", "epub"]);
 
   const fmtBytes = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`;
@@ -643,14 +648,49 @@
         suspicious: before.has_ai_metadata || before.has_c2pa || r.inspectionIncomplete,
       };
     }
-    if (TEXT_EXT.has(ext)) {
+    if (CONTAINER_KIND[ext]) {
+      const kind = CONTAINER_KIND[ext];
+      const u8 = new Uint8Array(await file.arrayBuffer());
+      const findings = [];
+      let before;
+      let cleaned;
+      /* Decode the way upstream does, with surrogateescape rather than a
+       * replacement character: a file that is not valid UTF-8 has to come back
+       * out byte for byte, minus what was removed on purpose. */
+      if (kind === "svg") {
+        before = ContainerMeta.inspectSvg(u8);
+        const r = ContainerMeta.cleanSvg(u8);
+        findings.push(...r.actions);
+        cleaned = ContainerMeta.decodeUtf8(r.data, "surrogateescape");
+      } else {
+        const text = ContainerMeta.decodeUtf8(u8, "surrogateescape");
+        before = kind === "html" ? ContainerMeta.inspectHtml(text) : ContainerMeta.inspectMarkdown(text);
+        const r = kind === "html" ? ContainerMeta.cleanHtml(text) : ContainerMeta.cleanMarkdown(text);
+        findings.push(...r.actions);
+        cleaned = r.text;
+      }
+      if (before.hasC2pa) findings.unshift(t("c2paFound"));
+      else if (before.hasAi) findings.unshift(t("aiMetaFound"));
+      // Then Layer A over the body, which is what upstream's also_layer_a_text
+      // does for markdown and HTML. SVG gets it here too: it is text with a
+      // schema, and invisible carriers sit in it the same way.
+      const { cleaned: afterA, stats } = LayerA.clean(cleaned, textOptions());
+      for (const [label, n] of Object.entries(stats.removed)) findings.push(t("removedTag", { n, label }));
+      for (const [label, n] of Object.entries(stats.replaced)) findings.push(label === "NFKC_normalize" ? t("nfkcTag", { n }) : t("replacedTag", { n, label }));
+      findings.push(t("containerNote"));
+      return {
+        blob: new Blob([ContainerMeta.encodeUtf8(afterA)], { type: CONTAINER_MIME[kind] }),
+        findings,
+        suspicious: before.hasAi || before.hasC2pa || stats.removed_count > 0,
+      };
+    }
+    if (PLAIN_TEXT_EXT.has(ext)) {
       const text = await file.text();
       const { cleaned, stats } = LayerA.clean(text, textOptions());
       const findings = [];
       for (const [label, n] of Object.entries(stats.removed)) findings.push(t("removedTag", { n, label }));
       for (const [label, n] of Object.entries(stats.replaced)) findings.push(label === "NFKC_normalize" ? t("nfkcTag", { n }) : t("replacedTag", { n, label }));
       if (!findings.length) findings.push(t("cleanText"));
-      if (ext !== "txt") findings.push(t("textOnlyNote"));
       return { blob: new Blob([cleaned], { type: file.type || "text/plain;charset=utf-8" }), findings, suspicious: stats.removed_count > 0 };
     }
     if (SERVER_ONLY_EXT.has(ext)) throw new Error(t("errNeedServer"));
