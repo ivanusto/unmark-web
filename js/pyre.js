@@ -50,9 +50,10 @@
   /**
    * Translate an upstream Python-`re` pattern (the subset used by this module)
    * into an equivalent JS source string: `\b`, `\s`, `\w` get Python semantics,
-   * and a literal `i` also matches `ı`/`İ` like Python's IGNORECASE does.
+   * and under IGNORECASE a literal `i` also matches `ı`/`İ`, like CPython's
+   * case folding does.
    */
-  function translatePyPattern(src) {
+  function translatePyPattern(src, ignoreCase) {
     let out = "";
     let inClass = false;
     for (let k = 0; k < src.length; k++) {
@@ -68,7 +69,10 @@
       }
       if (c === "[" && !inClass) { inClass = true; out += c; continue; }
       if (c === "]" && inClass) { inClass = false; out += c; continue; }
-      if (c === "i") { out += inClass ? "iıİ" : "[iıİ]"; continue; }
+      // Only under IGNORECASE. A case-sensitive Python pattern matches "i" and
+      // nothing else, so widening it there would quietly match Turkish text
+      // that CPython does not.
+      if ((c === "i" || c === "I") && ignoreCase) { out += inClass ? "iıİ" : "[iıİ]"; continue; }
       out += c;
     }
     return out;
@@ -76,7 +80,7 @@
 
   /** re.compile(pattern, re.IGNORECASE) equivalent (global, unicode). */
   function compilePy(src, ignoreCase) {
-    return new RegExp(translatePyPattern(src), ignoreCase ? "giu" : "gu");
+    return new RegExp(translatePyPattern(src, ignoreCase), ignoreCase ? "giu" : "gu");
   }
 
   const RE_ALNUM_CHAR = /^[\p{L}\p{N}]$/u;

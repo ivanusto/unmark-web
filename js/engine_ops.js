@@ -83,16 +83,30 @@
       return LayerA.inspect(text, options);
     },
 
-    inspectImageBytes({ u8 }) {
+    /* The file is read here rather than by the caller. Reading it on the main
+     * thread and passing the bytes cost two allocations of it, one for the read
+     * and one for the structured clone into this worker, and the page never
+     * needed them: only this op does. */
+    async inspectFileBytes({ file }) {
+      const u8 = await bytesOf(file);
       return ImageMeta.detectFormat(u8) !== "unknown" ? ImageMeta.inspect(u8) : AvMeta.inspectAv(u8);
     },
 
+    /* The threshold rides along with the report so the page can render the
+     * "score / threshold" column without holding js/stylometry.js itself. */
     stylometryScore({ text }) {
-      return Stylometry.score(text);
+      return { report: Stylometry.score(text), defaultThreshold: Stylometry.DEFAULT_THRESHOLD };
     },
 
+    /* An absent window or threshold is filled in here, where the defaults live.
+     * Passing the keys through as undefined would not do: detectText merges
+     * them over its defaults, and a present key wins even when its value is
+     * undefined. */
     gumbelDetect({ text, key, options }) {
-      return Gumbel.detectText(text, key, options);
+      const o = {};
+      if (options && options.window) o.window = options.window;
+      if (options && options.threshold) o.threshold = options.threshold;
+      return Gumbel.detectText(text, key, o);
     },
   };
 

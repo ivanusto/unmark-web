@@ -13,15 +13,61 @@
  * cannot start a worker, and the README says to open index.html that way, so
  * the fallback is a supported path rather than a safety net. Callers await
  * either way and cannot tell them apart.
+ *
+ * The engines are not in the page's script tags. The worker loads its own copy
+ * through importScripts, so on the path almost everyone takes the main thread
+ * never fetches, parses or compiles them at all: the six engine modules are
+ * most of the JavaScript this page has, and the first screen uses none of it.
+ * The fallback loads them itself, on the first call, which is also the first
+ * moment anyone can tell the difference.
  */
 (function (root) {
   "use strict";
 
-  const OPS = root.EngineOps;
+  /* Load order is the modules' dependency order: pyre before its users,
+   * engine_ops last because it captures the rest as it runs. */
+  const ENGINE_SCRIPTS = [
+    "pyre.js", "layer_a.js", "image_meta.js", "av_meta.js",
+    "container_meta.js", "stylometry.js", "gumbel.js", "engine_ops.js",
+  ];
+
   let worker = null;
   let unavailable = false;
   let nextId = 1;
+  let opsReady = null;
   const pending = new Map();
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const el = document.createElement("script");
+      el.src = src;
+      el.onload = () => resolve();
+      el.onerror = () => reject(new Error("could not load " + src));
+      document.head.appendChild(el);
+    });
+  }
+
+  /** The op table, loading the engines into this thread the first time. */
+  function ops() {
+    if (root.EngineOps) return Promise.resolve(root.EngineOps);
+    if (!opsReady) {
+      opsReady = ENGINE_SCRIPTS
+        .reduce((chain, name) => chain.then(() => loadScript("js/" + name)), Promise.resolve())
+        .then(() => {
+          if (!root.EngineOps) throw new Error("engine modules loaded but EngineOps is missing");
+          return root.EngineOps;
+        });
+    }
+    return opsReady;
+  }
+
+  function runHere(op, payload) {
+    return ops().then((table) => {
+      const fn = table.ops[op];
+      if (!fn) throw new Error(`unknown op: ${op}`);
+      return fn(payload);
+    });
+  }
 
   function ensureWorker() {
     if (worker || unavailable) return worker;
@@ -56,7 +102,7 @@
   /** Run `op` with `payload`, in a worker when there is one. */
   function call(op, payload) {
     const w = ensureWorker();
-    if (!w) return Promise.resolve().then(() => OPS.ops[op](payload));
+    if (!w) return runHere(op, payload);
     return new Promise((resolve, reject) => {
       const id = nextId++;
       pending.set(id, { resolve, reject });
@@ -66,10 +112,16 @@
         // Something in the payload could not be cloned: run it here instead of
         // failing the call, so a browser quirk costs responsiveness, not work.
         pending.delete(id);
-        resolve(OPS.ops[op](payload));
+        resolve(runHere(op, payload));
       }
     });
   }
+
+  /* Started now rather than on the first call. Creating it costs the page
+   * nothing: the fetching and compiling of the engines happens on the worker's
+   * own thread, and doing it during load means the first clean does not wait
+   * for it. */
+  ensureWorker();
 
   const api = { call, get offMainThread() { return !!ensureWorker(); } };
   root.Engine = api;

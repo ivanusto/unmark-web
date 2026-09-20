@@ -212,6 +212,12 @@ B64_CASES = [
     "=QUJD", "QUJD=RA==", "QQ==QQ==", "QQ==", "QQ=A", "QQ=%=", "QUJDR=", "QUJDR==",
     "QUJDR=A", "QQ", "QQ=", "QUJDRA===", "A===", "QQ==A", "QQ==AA==", "", "====",
     "SGVsbG8sIHdvcmxkIQ==",
+    # Long enough to cross the preallocated output buffer at every remainder,
+    # and with the whitespace and stray characters CPython silently ignores.
+    base64.b64encode(bytes(range(256)) * 9).decode(),
+    base64.b64encode(bytes(range(256)) * 9 + b"x").decode(),
+    base64.b64encode(bytes(range(256)) * 9 + b"xy").decode(),
+    "\n".join(base64.b64encode(bytes(range(256)) * 4).decode()[i:i + 76] for i in range(0, 1368, 76)),
 ]
 
 
@@ -237,6 +243,19 @@ DECODE_BLOBS = {
     "mixed": b"ok \xff then \xe4\xb8\xad more \xc3",
     "e0_bad_second": b"\xe0\x80\x80",
     "f4_bad_second": b"\xf4\x90\x80\x80",
+    # Valid UTF-8, which is what the TextDecoder/TextEncoder fast paths handle.
+    # Random bytes are almost never valid, so without these the fast paths were
+    # reachable from the app and unreachable from the suite.
+    "bom": "\ufeffhello".encode(),
+    "bom_only": b"\xef\xbb\xbf",
+    "bom_midway": "a\ufeffb".encode(),
+    "astral": "\U0001f600\U0001d11e".encode(),
+    "dotted_capital_i": "\u0130stanbul".encode(),
+    "dotless_i": "\u0131rmak".encode(),
+    "cjk_long": ("\u4e2d\u6587\u5b57" * 200).encode(),
+    "ascii_long": b"a" * 4096,
+    "all_ascii_bytes": bytes(range(0, 128)),
+    "valid_then_bad_tail": "caf\u00e9 \u4e2d".encode() + b"\xff",
     **{f"random{i}": _rand_bytes(64, i) for i in range(12)},
 }
 

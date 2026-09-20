@@ -170,12 +170,14 @@ node scripts/check-upstream.mjs                                                 
 - `js/container_meta.js`，`container_meta.py` 文字標記那半的移植（SVG、HTML 與 Markdown frontmatter 的檢查與清除、把內嵌的 `data:image/…` URI 丟回圖片清除器、共用的生成器鍵名詞彙）。該檔的 ZIP 與 PDF 那半沒有移植，在瀏覽器裡也沒有對應物。
 - `js/stylometry.js`，`score_stylometry.py` 的移植（burstiness／MATTR／AI 片語密度；啟發式，不是浮水印偵測器）
 - `js/gumbel.js`，`detect_gumbel.py` 的移植（keyed-Gumbel／EXP 同金鑰重放，自帶同步版 SHA-256 與 HMAC，因此不需要 `crypto.subtle`，也不需要 secure context）
-- `js/engine.js`、`js/engine_ops.js`、`js/worker.js`，瀏覽器允許時，引擎的工作會跑在 Web Worker 裡。`engine_ops.js` 是不含 DOM 的操作表，兩邊都會載入它，所以 worker 與主執行緒跑的是同一份程式碼，不是兩份會各自漂移的副本。直接從檔案系統開啟的頁面起不了 worker，此時 `engine.js` 就地呼叫同一張表，呼叫端分辨不出差別。
+- `js/engine.js`、`js/engine_ops.js`、`js/worker.js`，瀏覽器允許時，引擎的工作會跑在 Web Worker 裡。`engine_ops.js` 是不含 DOM 的操作表，兩邊都會載入它，所以 worker 與主執行緒跑的是同一份程式碼，不是兩份會各自漂移的副本。引擎完全不在頁面的 script 標籤裡：worker 自己載入一份，主執行緒因此從不抓取也不編譯它們。直接從檔案系統開啟的頁面起不了 worker，此時 `engine.js` 才把它們載進頁面並就地呼叫同一張表，呼叫端分辨不出差別。
 - `js/detectors.js`，檢測器的偵測器註冊表：字元、中繼資料、統計三層共用一種結果契約，加上給總結與前後對照用的 `summarize()`／`compare()`
 - `js/api.js`，`/health /capabilities /inspect /clean /detect` 的客戶端，以及選用的 `/llm-config`＋`/llm` 改寫呼叫與 `/stat-config`＋`/stat` sidecar 呼叫
 - `js/i18n.js`、`js/app.js`、`css/app.css`、`index.html`，UI（英文／繁體中文／簡體中文、淺色／深色、支援鍵盤操作）。語系依 `navigator.languages` 判斷並記在 `localStorage`；新增語言只需在 `js/i18n.js` 的 `LANGS` 加一列、再加一本字典。
 - `tests/test_layer_a_parity.py`、`tests/test_image_meta_parity.py`、`tests/test_av_meta_parity.py`、`tests/test_stylometry_parity.py`、`tests/test_gumbel_parity.py`、`tests/test_container_meta_parity.py`、`tests/test_contains_any_parity.py`、`tests/test_c2pa_prov_scan_parity.py`、`tests/test_finding_confidence_parity.py`，與上游 checkout 的跨引擎 parity 測試（缺少 `node` 或該 checkout 時會跳過，所以整套測試要用 `-rs` 跑）
+- `tests/test_pyre_semantics.py`，直接拿 `js/pyre.js` 對 CPython 的 `re` 比對，而不是只透過用到它的移植去比。一條現行樣式剛好踩不到的轉譯規則，對每一套 parity 測試都是隱形的。
 - `tests/test_i18n_keys.py`，三個語系必須有相同的字串鍵，且 `index.html` 裡每個 `data-i18n` 都解得開。這種缺口在執行期看不出來，因為 `t()` 會靜靜 fallback。
+- `tests/test_av_exts_consistency.py`，`js/app.js` 自己那份音影副檔名清單必須與 `AvMeta.AV_EXTS` 相同。頁面在任何引擎載入之前就要用它來分流，所以讀不到引擎那一份。
 - `serve_local.py`，同源靜態伺服器 + `/api` 代理、選用的 `/llm` 改寫代理，以及選用的 `/stat` sidecar 代理
 - `sidecar/`，統計型偵測器 sidecar（有自己的 `requirements.txt`；永遠不是頁面的一部分）
 - `scripts/check-upstream.mjs`，以 `node scripts/check-upstream.mjs` 執行；以 `scripts/upstream-sources.json` 記錄的雜湊比對上游 Python 模組（只移植了一部分的模組，可以在來源上加 `slice`，改成追蹤單一定義而非整個檔案）；`.github/workflows/upstream-check.yml` 每天執行它與 parity 測試，任一訊號觸發就開 issue。parity 抓行為改變，雜湊抓測試涵蓋不到的變動（例如上游新增了一種格式）。
@@ -185,6 +187,16 @@ node scripts/check-upstream.mjs                                                 
 ## 版本紀錄
 
 各版完整說明見 [releases](https://github.com/ivanusto/unmark-web/releases)。
+
+### [v0.8.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.8.0)
+
+- **不再為了找兩個子字串，就把整份文件轉成小寫兩次。** 尋找 `<script` 與 `data:image/` 的掃描器原本會複製整份檔案、把其中的 ASCII 字母轉小寫，再去搜尋那份複本，這是上游在 Python 裡的作法。改成直接對原字串做不分大小寫的搜尋，得到完全相同的位移，卻不需要那份複本；用的仍是本移植原本就選擇的「只轉 ASCII」規則，不是上游那個會改變長度的 `str.lower()`。一份 3 MiB、內嵌 1.5 MB 圖片的頁面，瀏覽器裡的清理從 1974 ms 降到 1015 ms，掃描本身從 1644 ms 降到 198 ms。
+- **UTF-8 的進出在可行時交給平台的編解碼器。** `decodeUtf8` 先試 fatal 模式的 `TextDecoder`，它只在輸入完全合法時成功，而合法輸入根本碰不到 CPython 的兩個錯誤處理器，答案因此相同。`encodeUtf8` 除非字串帶有不成對的代理字元，否則走 `TextEncoder`，那正是兩者唯一會分歧的地方。手寫的掃描器留給其餘情況，因為 CPython 對壞序列的精確回報方式就寫在那裡。3 MiB 的解碼從 357 ms 降到 9 ms，編碼從 132 ms 降到 12 ms。`ignoreBOM` 有開，因為不開的話 `TextDecoder` 會吃掉開頭的 U+FEFF 而 Python 不會；現在也有一條測試會在它被拿掉時失敗。
+- **base64 與百分號編碼不再逐位元組拼出結果。** 一份帶內嵌圖片的文件每次清理都會把那張圖完整解碼再編碼一次，所以 `b64decode` 與 `unquoteToBytes` 改成寫進一次配置好的緩衝區，而不是往陣列推；`b64encode` 與 `quoteFromBytes` 改讀預先算好的查表。
+- **Inspector 不再在繪製頁面的那條執行緒上讀檔。** 它原本會把每張圖整份讀進來，然後那些位元組又被複製一份進 worker，而兩份對頁面都沒有用處：只有引擎要它們。現在傳過去的是 `File`，在用得到的地方才讀。一張 24 MiB 的 PNG 從約 390 ms 降到約 335 ms，而且只配置一次而不是兩次。
+- **首屏不再下載清理引擎。** 它們是這個頁面 JavaScript 的大宗，而 worker 本來就會自己載一份，所以把它們也放進頁面的 script 標籤，除了 `file://` 這個沒有 worker 可用的情況以外毫無用處。`js/engine.js` 現在只在那一種情況下自己載入它們。首次載入從十三支腳本、103 KB 的 JavaScript 降到五支、41 KB（均為 gzip 後）。
+- **區分大小寫的樣式不會再比對到 CPython 不會比對的土耳其文。** `js/pyre.js` 原本不論樣式有沒有要求 IGNORECASE，都把字面 `i` 擴寫成也能匹配 `ı` 與 `İ`。現行的樣式剛好都踩不到，這正是沒人發現的原因。`tests/test_pyre_semantics.py` 現在直接拿這層轉譯去對 CPython。
+- 1532 個測試，十二個上游錨點未變。這一版沒有任何一處改動會改變輸出的位元組，而 parity 測試就是證據。
 
 ### [v0.7.1](https://github.com/ivanusto/unmark-web/releases/tag/v0.7.1)
 

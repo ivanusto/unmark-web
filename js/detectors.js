@@ -18,12 +18,13 @@
  * detector exists but was not exercised, "not_applicable" means the input type
  * does not fit (image detectors on text).
  *
- * Inputs: { kind:"text", text }, or { kind:"file", name, u8 } for a file held in
- * memory, or { kind:"file", name, file } for one that is not. The second form
- * is how audio and video arrive: AvMeta's slice driver reads box and chunk
- * headers through File.slice(), so a two-hour recording costs no more than a
- * two-second one and needs no size limit. Detectors that want the bytes
- * declare so through applies().
+ * Inputs: { kind:"text", text }, or { kind:"file", name, file, av } for a file.
+ * A file always arrives as the File itself, never as bytes: whichever engine
+ * needs them reads them where it runs, which for the worker means the page
+ * neither allocates them nor has them copied across. `av` picks AvMeta's slice
+ * driver, which reads box and chunk headers through File.slice(), so a two-hour
+ * recording costs no more than a two-second one and needs no size limit.
+ * Detectors that want a file declare so through applies().
  * Detectors must not mutate the input; cleaning is a separate step so the
  * Inspector can honestly show whether cleaning changed each detector's answer.
  */
@@ -121,18 +122,18 @@
 
   // ------------------------------------------------------------ metadata layer (image containers)
   const isBlob = (x) => typeof Blob !== "undefined" && x instanceof Blob;
-  const isFile = (input) => !!input && input.kind === "file" && (input.u8 instanceof Uint8Array || isBlob(input.file));
+  const isFile = (input) => !!input && input.kind === "file" && isBlob(input.file);
   /* Image containers first, then the audio and video ones. Both inspectors
    * report the same {has_c2pa, has_ai_metadata, findings} shape, and the
    * buckets below are regexes over the finding prose, so MP4, WAV, MP3 and
    * FLAC findings sort themselves without a second bucket table. */
   const mediaReport = async (input, cache) => {
     if (!("media" in cache)) {
-      /* No bytes means the caller deliberately did not read the file: take the
-       * slice driver, which reports the same shape from the headers alone. */
-      cache.media = input.u8
-        ? root.Engine.call("inspectImageBytes", { u8: input.u8 })
-        : root.Engine.call("inspectAvFile", { file: input.file });
+      /* Audio and video take the slice driver, which reports the same shape
+       * from the headers alone and never reads the recording. */
+      cache.media = input.av
+        ? root.Engine.call("inspectAvFile", { file: input.file })
+        : root.Engine.call("inspectFileBytes", { file: input.file });
     }
     return cache.media;
   };
@@ -195,8 +196,15 @@
     applies: isText,
     async run(input) {
       const def = byId("stylometry");
-      if (!root.Stylometry || typeof root.Stylometry.score !== "function") return result(def, { status: "unavailable", noteKey: "inspect.noteNoStylometry" });
-      const rep = await root.Engine.call("stylometryScore", { text: input.text });
+      /* The engine is not on this thread, so "can it run here" is answered by
+       * asking it rather than by looking for its global. */
+      let scored;
+      try {
+        scored = await root.Engine.call("stylometryScore", { text: input.text });
+      } catch (_) {
+        return result(def, { status: "unavailable", noteKey: "inspect.noteNoStylometry" });
+      }
+      const rep = scored.report;
       const evidence = [];
       if (rep.burstiness_cv != null) evidence.push({ label: "burstiness_cv", detail: String(rep.burstiness_cv) });
       if (rep.lexical_diversity != null) evidence.push({ label: "lexical_diversity", detail: String(rep.lexical_diversity) });
@@ -217,7 +225,7 @@
         status = "uncertain";
       }
       return result(def, {
-        status, score: rep.score, threshold: root.Stylometry.DEFAULT_THRESHOLD != null ? root.Stylometry.DEFAULT_THRESHOLD : null,
+        status, score: rep.score, threshold: scored.defaultThreshold != null ? scored.defaultThreshold : null,
         evidence, noteKey,
         meta: {
           word_count: rep.word_count, sentence_count: rep.sentence_count,
@@ -236,9 +244,6 @@
     applies: isText,
     async run(input, ctx) {
       const def = byId("gumbel");
-      if (!root.Gumbel || typeof root.Gumbel.detectText !== "function") {
-        return result(def, { status: "unavailable", noteKey: "inspect.noteNoGumbel" });
-      }
       const cfg = (ctx && ctx.gumbel) || {};
       const key = typeof cfg.key === "string" ? cfg.key.trim() : "";
       if (!key) return result(def, { status: "unavailable", noteKey: "inspect.noteNoGumbelKey" });
@@ -249,13 +254,15 @@
         rep = await root.Engine.call("gumbelDetect", {
           text: input.text,
           key,
-          options: {
-            window: cfg.window || root.Gumbel.DEFAULT_WINDOW,
-            threshold: cfg.threshold || root.Gumbel.DEFAULT_THRESHOLD,
-          },
+          options: { window: cfg.window, threshold: cfg.threshold },
         });
       } catch (e) {
-        return result(def, { status: "error", note: String((e && e.message) || e) });
+        /* The engine not being there at all is a different answer from a run
+         * that failed, and the row says so: one is "cannot run here", the
+         * other is an error worth reading. */
+        const msg = String((e && e.message) || e);
+        if (/EngineOps|Gumbel|could not load/.test(msg)) return result(def, { status: "unavailable", noteKey: "inspect.noteNoGumbel" });
+        return result(def, { status: "error", note: msg });
       }
       const meta = { window: rep.window, counted: rep.counted, tokens_total: rep.tokens_total, scheme: rep.scheme };
       if (!rep.counted) return result(def, { status: "not_tested", noteKey: "inspect.noteGumbelShort", meta });
