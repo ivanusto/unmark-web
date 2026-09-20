@@ -229,8 +229,14 @@
    * these names does a value like "Claude" mean provenance rather than
    * subject matter. */
   const GENERATOR_NAME_KEYS = new Set([
-    "generator", "generated_by", "generatedby", "created_with", "createdwith", "made_with",
-    "madewith", "creator", "producer", "software", "tool", "engine",
+    "generator", "generated_by", "generatedby", "generated-by",
+    "generated_with", "generatedwith", "generated-with",
+    "created_with", "createdwith", "created-with",
+    "made_with", "madewith", "made-with",
+    "written_by", "writtenby", "written-by",
+    "produced_by", "producedby", "produced-by",
+    "authored_by", "authoredby", "authored-by",
+    "creator", "producer", "software", "tool", "engine",
   ]);
 
   /* Values carried by any other name are free prose, so they are matched only
@@ -239,7 +245,8 @@
   const AI_FREE_TEXT_MARKER_RE = compilePy(
     "\\bc2pa\\b|\\bcontent[-_ ]?credentials?\\b|\\bcontentauth\\b|\\bcai:|"
     + "\\bsynthid\\b|\\baigc\\b|\\bdigital[-_ ]?source[-_ ]?type\\b|"
-    + "\\b(?:trained[-_ ]?)?algorithmic[-_ ]?media\\b", true);
+    + "\\b(?:trained[-_ ]?)?algorithmic[-_ ]?media\\b|"
+    + "\\b(?:generated|created|made|written|produced|authored)\\s+(?:with|by|using)\\b", true);
 
   /**
    * True when a named value is evidence of a provenance mark. Shared by the
@@ -992,6 +999,26 @@
     return rows;
   }
 
+  /* Frontmatter keys that are Claude Code agent/skill *configuration* and
+   * happen to collide with provenance key names. `model` is in
+   * AI_FRONTMATTER_KEYS, which is right for a generated document and wrong for
+   * `.claude/agents/*.md`, where dropping it silently changes which model the
+   * agent runs on. */
+  const AGENT_CONFIG_KEYS = new Set(["model", "tools", "allowed-tools", "name", "description"]);
+
+  /* The shape that identifies such a file without needing its path: a name, a
+   * description and a tool grant. Ordinary prose frontmatter does not carry all
+   * three, so this hands a real watermark no way to exempt itself, and values
+   * are still checked, so `description: Generated with Claude Code` inside an
+   * agent definition is still caught. */
+  const AGENT_SHAPE_REQUIRED = [new Set(["name"]), new Set(["description"]), new Set(["tools", "allowed-tools"])];
+
+  /** _is_agent_frontmatter(keys) */
+  function isAgentFrontmatter(keys) {
+    const lowered = new Set(keys.map((k) => k.toLowerCase()));
+    return AGENT_SHAPE_REQUIRED.every((group) => [...group].some((k) => lowered.has(k)));
+  }
+
   const afterColon = (line) => (line.includes(":") ? line.slice(line.indexOf(":") + 1) : "");
 
   /** inspect_markdown(text) -> {hasC2pa, hasAi, findings, details} */
@@ -1003,9 +1030,13 @@
     const m = FM_RE.exec(text);
     if (m) {
       hasFm = true;
-      for (const [key, line] of parseSimpleYamlKeys(m[1])) {
+      const rows = parseSimpleYamlKeys(m[1]);
+      const isAgent = isAgentFrontmatter(rows.map(([k]) => k));
+      for (const [key, line] of rows) {
         keys.push(key);
-        if (AI_FRONTMATTER_KEYS.has(key.toLowerCase()) || search(AI_META_NAME_RE, key)) {
+        if (isAgent && AGENT_CONFIG_KEYS.has(key.toLowerCase())) {
+          /* agent configuration, not provenance; the value is still checked below */
+        } else if (AI_FRONTMATTER_KEYS.has(key.toLowerCase()) || search(AI_META_NAME_RE, key)) {
           hasAi = true;
           findings.push(`frontmatter key: ${key}`);
         }
@@ -1039,6 +1070,7 @@
       const body = text.slice(m[0].length);
       const kept = [];
       let dropping = false;  // inside the nested block of a dropped top-level key
+      const isAgent = isAgentFrontmatter(parseSimpleYamlKeys(block).map(([k]) => k));
       for (const line of PyRe.pySplitlines(block)) {
         const stripped = PyRe.pyStrip(line);
         // Blank lines and comments belong to whichever block we are inside.
@@ -1049,7 +1081,9 @@
         if (!km) { dropping = false; kept.push(line); continue; }
         const key = km[1];
         const val = afterColon(line);
-        if (AI_FRONTMATTER_KEYS.has(key.toLowerCase()) || search(AI_META_NAME_RE, key)) {
+        if (isAgent && AGENT_CONFIG_KEYS.has(key.toLowerCase())) {
+          /* agent configuration; fall through to the value check */
+        } else if (AI_FRONTMATTER_KEYS.has(key.toLowerCase()) || search(AI_META_NAME_RE, key)) {
           actions.push(`drop frontmatter key: ${key}`);
           dropping = true;
           continue;

@@ -26,7 +26,7 @@
 | 輸入 | 瀏覽器引擎 | 伺服器引擎（`server.py`） |
 | --- | --- | --- |
 | 貼上的文字 / `.txt` | Layer A：零寬與 bidi 控制字元、變體選擇符、tag 字元、PUA、Unicode 非字元、保留的預設可忽略字元、其他 `Cf`；空白同形字；可選的 NFKC／拉丁易混字元處理。與上游一致地保留具功能性的隱形字元（emoji 的 ZWJ/VS16、波斯文／印度系文字的 ZWNJ、旗幟 tag、蒙古文 FVS、高棉文母音、諺文填充字元、阿拉伯文 `Cf`，以及緊鄰自身書寫系統的排版控制字元：埃及聖書體象限、Duployan 速記、音樂符號連桿），並提供「偏執模式」開關。 | 同左 |
-| `.md` `.html` `.svg` | 完整容器清理，再對內容套用 Layer A。SVG：`<metadata>` 與 `<x:xmpmeta>` 區塊、XML 的 DOCTYPE／ENTITY 宣告、帶 AI 標記的註解、根元素上像生成器的屬性。HTML：指名生成器的 `<meta>` 標籤、JSON-LD 來源標記區塊、`data-ai*` 屬性。Markdown：AI frontmatter 鍵連同其下的巢狀行。三者共通：內嵌的 `data:image/…` 會被丟回圖片清除器。非 UTF-8 的檔案會逐位元原樣回來，只少掉刻意移除的部分。 | 同左，另加 ZIP 與 PDF 容器 |
+| `.md` `.html` `.svg` | 完整容器清理，再對內容套用 Layer A。SVG：`<metadata>` 與 `<x:xmpmeta>` 區塊、XML 的 DOCTYPE／ENTITY 宣告、帶 AI 標記的註解、根元素上像生成器的屬性。HTML：指名生成器的 `<meta>` 標籤、JSON-LD 來源標記區塊、`data-ai*` 屬性。Markdown：AI frontmatter 鍵連同其下的巢狀行，但 Claude Code 的 agent 或 skill 定義例外，它的 `model` 與 `tools` 是設定不是來源標記。三者共通：內嵌的 `data:image/…` 會被丟回圖片清除器。非 UTF-8 的檔案會逐位元原樣回來，只少掉刻意移除的部分。 | 同左，另加 ZIP 與 PDF 容器 |
 | PNG / JPEG / WebP / AVIF / HEIC | 移除 `tEXt/zTXt/iTXt/eXIf/caBX/c2*` 區塊、`APPn`（JFIF 除外）與 `COM` 區段、`EXIF/XMP/ICCP/C2PA` RIFF 區塊並修正 VP8X 旗標，以及 ISOBMFF 的 `jumb/c2pa/uuid` 盒與其 `meta` 子盒，涵蓋 XMP 的 user type 與 C2PA 來源標記的 user type `d8fec3d6-…`。像素不動（不經 canvas 重新編碼）。「保留非 AI 中繼資料」模式只移除帶有 AI／C2PA 跡象的區塊。 | 同左，若有安裝則額外提供像素域後端 |
 | BMP / GIF / TIFF | BMP：移除像素資料之後的尾端位元組（BMP 中繼資料唯一可能存在的位置）並改寫檔案大小欄位。GIF：移除註解與 XMP／未知的 application extension，保留 NETSCAPE2.0 循環與 ICC。TIFF（classic 與 BigTIFF）：走訪 IFD 鏈並移除 XMP／EXIF／GPS／IPTC／Photoshop／MakerNote 標籤，逐一原地修補 IFD，讓 strip 與 tile 的 offset 保持有效。 | 同左 |
 | PDF / DOCX / ODT / EPUB | 不支援（需要伺服器） | 支援 |
@@ -185,6 +185,12 @@ node scripts/check-upstream.mjs                                                 
 ## 版本紀錄
 
 各版完整說明見 [releases](https://github.com/ivanusto/unmark-web/releases)。
+
+### [v0.7.1](https://github.com/ivanusto/unmark-web/releases/tag/v0.7.1)
+
+- **清理 Claude Code 的 agent 定義檔不會再刪掉它的工具授權。** 一份 `.claude/agents/*.md` 或 `SKILL.md` 會在 frontmatter 裡帶 `tools:` 與 `model:`，而 `tools` 的值經常指名帶有 claude 字樣的 MCP 伺服器。Markdown 清理在值看起來像來源標記時會丟掉**整個鍵**，所以清這種檔案會把授權與模型一起移除：檔案照樣解析得了，agent 卻靜默失去設定。[guillaumemeyer/watermarks-remover#345](https://github.com/guillaumemeyer/watermarks-remover/pull/345) 的作法是在 frontmatter 呈現 agent 定義的形狀時豁免那些鍵，也就是同時有 `name`、`description`，以及 `tools` 或 `allowed-tools` 其中之一；這是在沒有路徑可看的情況下辨認檔案的方式。值一律照掃，所以 `description: Generated with Claude Code` 仍會被抓到、仍會被清掉；三個鍵只有兩個則是普通 frontmatter，不予豁免。
+- **指名生成工具的鍵，現在認得更多寫法。** `generated-with:`、`generated_with:`、`made-with:`、`written-by:`、`produced_by:`、`authored-by:` 都算生成器命名鍵，所以它們的值裡出現純廠商名就是來源標記。在自由文字裡，`generated with`、`created by`、`written using` 這一族的措辭本身就是標記，而純廠商名不是：「Claude Monet painted this」仍然只是一句描述。
+- 新的 parity 錨點：`container_meta.py` 的 `#ai-vocabulary` `10bfb05e2945`、`#markdown` `868ad8818b39`。1446 個測試。
 
 ### [v0.7.0](https://github.com/ivanusto/unmark-web/releases/tag/v0.7.0)
 
