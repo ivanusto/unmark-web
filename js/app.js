@@ -13,7 +13,10 @@
     png: "image/png", jpeg: "image/jpeg", webp: "image/webp", avif: "image/avif",
     heic: "image/heic", bmp: "image/bmp", gif: "image/gif", tiff: "image/tiff",
   };
-  const AV_EXT = new Set(AvMeta.AV_EXTS);
+  /* Its own copy, because routing a dropped file by extension happens before
+   * any engine is loaded. tests/test_av_exts_consistency.py fails if this and
+   * AvMeta.AV_EXTS ever say different things. */
+  const AV_EXT = new Set(["mp4", "mov", "m4a", "m4v", "wav", "mp3", "flac"]);
   // Same idea as IMAGE_MIME: keyed by the format the sniffer reported. MOV, M4A
   // and M4V all detect as "mp4" (they are the same container), so the original
   // extension picks the type back apart for the download.
@@ -257,7 +260,7 @@
    * "unavailable" everywhere else, hosted page included. */
   const INSPECT_KEY = "unmark-web.inspect";
   const insp = {
-    input: null,            // {kind:"text",text} | {kind:"file",name,u8}
+    input: null,            // {kind:"text",text} | {kind:"file",name,file,av}
     results: null,          // last run
     compare: null,          // [{detector, before, after, same}] after "Clean & re-inspect"
     cleanedText: null,
@@ -450,7 +453,7 @@
     const rep = {
       schema: "unmark-inspector/1", generated_at: new Date().toISOString(), page: location.origin + location.pathname,
       input: input.kind === "text" ? { kind: "text", length: input.text.length }
-        : { kind: "file", name: input.name, bytes: input.u8 ? input.u8.length : input.file.size },
+        : { kind: "file", name: input.name, bytes: input.file.size },
       key_profile: $("inspect-key").value || "a",
       // Settings only, never the key itself: the report is meant to be pasted
       // into a bug thread.
@@ -475,16 +478,17 @@
      * never enters memory and the cap that exists to keep a tab alive has
      * nothing to cap - the same reason the clean tab exempts them. */
     const ext = (file.name.split(".").pop() || "").toLowerCase();
-    if (AV_EXT.has(ext)) { ready({ kind: "file", name: file.name, file }); return; }
-    /* Everything else is still read whole: the image detectors want the bytes,
-     * so refuse an oversized file rather than let it take the tab down. */
+    if (AV_EXT.has(ext)) { ready({ kind: "file", name: file.name, file, av: true }); return; }
+    /* Everything else is still read whole, but by the engine where it runs, so
+     * the page holds only the File. The cap stays: the read still happens, and
+     * an oversized one would take the tab down wherever it is done. */
     if (file.size > BROWSER_MAX_BYTES) {
       $("inspect-file-name").textContent = t("errTooLarge", {
         size: fmtBytes(file.size), limit: fmtBytes(BROWSER_MAX_BYTES), engine: t("viaBrowser"),
       });
       return;
     }
-    file.arrayBuffer().then((buf) => ready({ kind: "file", name: file.name, file, u8: new Uint8Array(buf) }));
+    ready({ kind: "file", name: file.name, file, av: false });
   }
 
   async function runStatDemo() {

@@ -57,7 +57,21 @@
    * sees exactly those bytes, so "replace" yields one U+FFFD for the whole
    * run while "surrogateescape" yields one lone surrogate per byte.
    */
+  const TD_STRICT = typeof TextDecoder !== "undefined" ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }) : null;
+  const TE = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
+  const RE_LONE_SURROGATE = /\p{Surrogate}/u;
+
   function decodeUtf8(u8, mode) {
+    /* Fast path. TextDecoder in fatal mode succeeds only when the whole input
+     * is well-formed UTF-8, and well-formed input never reaches either error
+     * handler, so both modes agree with it and with each other. ignoreBOM is
+     * not optional: without it TextDecoder swallows a leading U+FEFF, and
+     * bytes.decode() in Python does not. Anything invalid throws and falls
+     * through to the scanner below, which is where CPython's exact reporting
+     * of a broken sequence lives. */
+    if (TD_STRICT) {
+      try { return TD_STRICT.decode(u8); } catch (_) { /* not valid UTF-8 */ }
+    }
     let out = "";
     let i = 0;
     const n = u8.length;
@@ -100,16 +114,27 @@
 
   /** str.encode("utf-8", errors="surrogateescape"). */
   function encodeUtf8(str) {
-    const out = [];
+    /* Fast path. Under the u flag a well-formed pair is one code point and not
+     * in the Surrogate category, so this test finds exactly the lone surrogates
+     * that surrogateescape puts in a string and that TextEncoder would turn
+     * into U+FFFD. Without one, TextEncoder produces the same bytes Python
+     * does. */
+    if (TE && !RE_LONE_SURROGATE.test(str)) return TE.encode(str);
+    // Three bytes per UTF-16 unit is the ceiling: a pair costs four across two.
+    const out = new Uint8Array(str.length * 3);
+    let n = 0;
     for (const ch of str) {
       const cp = ch.codePointAt(0);
-      if (cp >= 0xdc80 && cp <= 0xdcff) { out.push(cp - 0xdc00); continue; }
-      if (cp < 0x80) out.push(cp);
-      else if (cp < 0x800) out.push(0xc0 | (cp >> 6), 0x80 | (cp & 63));
-      else if (cp < 0x10000) out.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
-      else out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+      if (cp >= 0xdc80 && cp <= 0xdcff) { out[n++] = cp - 0xdc00; continue; }
+      if (cp < 0x80) { out[n++] = cp; }
+      else if (cp < 0x800) { out[n++] = 0xc0 | (cp >> 6); out[n++] = 0x80 | (cp & 63); }
+      else if (cp < 0x10000) { out[n++] = 0xe0 | (cp >> 12); out[n++] = 0x80 | ((cp >> 6) & 63); out[n++] = 0x80 | (cp & 63); }
+      else {
+        out[n++] = 0xf0 | (cp >> 18); out[n++] = 0x80 | ((cp >> 12) & 63);
+        out[n++] = 0x80 | ((cp >> 6) & 63); out[n++] = 0x80 | (cp & 63);
+      }
     }
-    return new Uint8Array(out);
+    return out.slice(0, n);
   }
 
   // ---- base64 and percent-encoding --------------------------------------
@@ -129,7 +154,10 @@
    * "=" to close it. Throws on the two shapes CPython refuses.
    */
   function b64decode(s) {
-    const out = [];
+    // Four input characters carry at most three bytes, and an embedded image
+    // arrives here as a megabyte of base64, so the output is sized once.
+    const out = new Uint8Array(((s.length >> 2) + 1) * 3);
+    let n = 0;
     let quad = 0;
     let bits = 0;
     let pads = 0;
@@ -139,8 +167,8 @@
         if (quad < 2) continue;              // nothing to close yet
         pads += 1;
         // 18 bits left is two bytes, 12 bits is one; the rest is the padding.
-        if (quad === 3 && pads === 1) { out.push((bits >> 10) & 0xff, (bits >> 2) & 0xff); return new Uint8Array(out); }
-        if (quad === 2 && pads === 2) { out.push((bits >> 4) & 0xff); return new Uint8Array(out); }
+        if (quad === 3 && pads === 1) { out[n++] = (bits >> 10) & 0xff; out[n++] = (bits >> 2) & 0xff; return out.slice(0, n); }
+        if (quad === 2 && pads === 2) { out[n++] = (bits >> 4) & 0xff; return out.slice(0, n); }
         continue;
       }
       const v = code < 128 ? B64_VALUES[code] : -1;
@@ -149,15 +177,24 @@
       bits = (bits << 6) | v;
       quad += 1;
       if (quad === 4) {
-        out.push((bits >> 16) & 0xff, (bits >> 8) & 0xff, bits & 0xff);
+        out[n++] = (bits >> 16) & 0xff; out[n++] = (bits >> 8) & 0xff; out[n++] = bits & 0xff;
         quad = 0; bits = 0;
       }
     }
     if (pads) throw new Error("Incorrect padding");
     if (quad === 1) throw new Error("Invalid base64-encoded string: number of data characters cannot be 1 more than a multiple of 4");
     if (quad === 2 || quad === 3) throw new Error("Incorrect padding");
-    return new Uint8Array(out);
+    return out.slice(0, n);
   }
+
+  // Two output characters per table entry, so a 3-byte group costs two lookups
+  // and one concatenation instead of four and three. An embedded image is
+  // re-encoded in full every time a document carrying one is cleaned.
+  const B64_PAIRS = (() => {
+    const t = new Array(4096);
+    for (let i = 0; i < 4096; i++) t[i] = B64_ALPHABET[i >> 6] + B64_ALPHABET[i & 63];
+    return t;
+  })();
 
   /** base64.b64encode(data).decode("ascii"). */
   function b64encode(u8) {
@@ -165,7 +202,7 @@
     let i = 0;
     for (; i + 2 < u8.length; i += 3) {
       const n = (u8[i] << 16) | (u8[i + 1] << 8) | u8[i + 2];
-      out += B64_ALPHABET[(n >> 18) & 63] + B64_ALPHABET[(n >> 12) & 63] + B64_ALPHABET[(n >> 6) & 63] + B64_ALPHABET[n & 63];
+      out += B64_PAIRS[n >> 12] + B64_PAIRS[n & 4095];
     }
     const left = u8.length - i;
     if (left === 1) {
@@ -178,17 +215,20 @@
     return out;
   }
 
+  const RE_TWO_HEX = /^[0-9a-fA-F]{2}$/;
+
   /** urllib.parse.unquote_to_bytes(s): a malformed escape stays literal. */
   function unquoteToBytes(s) {
     const src = encodeUtf8(s);
-    const out = [];
+    const out = new Uint8Array(src.length);
+    let n = 0;
     for (let i = 0; i < src.length; i++) {
-      if (src[i] !== 0x25 /* % */) { out.push(src[i]); continue; }
+      if (src[i] !== 0x25 /* % */) { out[n++] = src[i]; continue; }
       const hex = String.fromCharCode(src[i + 1] || 0, src[i + 2] || 0);
-      if (/^[0-9a-fA-F]{2}$/.test(hex)) { out.push(parseInt(hex, 16)); i += 2; continue; }
-      out.push(src[i]);
+      if (RE_TWO_HEX.test(hex)) { out[n++] = parseInt(hex, 16); i += 2; continue; }
+      out[n++] = src[i];
     }
-    return new Uint8Array(out);
+    return out.slice(0, n);
   }
 
   // urllib's _ALWAYS_SAFE plus quote_from_bytes' default safe="/". Note what is
@@ -201,14 +241,18 @@
     return safe;
   })();
   const HEX = "0123456789ABCDEF";
+  // The whole answer for a byte, precomputed: the character itself when it is
+  // safe, its escape when it is not.
+  const QUOTE_TABLE = (() => {
+    const t = new Array(256);
+    for (let b = 0; b < 256; b++) t[b] = QUOTE_SAFE[b] ? String.fromCharCode(b) : "%" + HEX[b >> 4] + HEX[b & 15];
+    return t;
+  })();
 
   /** urllib.parse.quote_from_bytes(data) with the default safe="/". */
   function quoteFromBytes(u8) {
     let out = "";
-    for (let i = 0; i < u8.length; i++) {
-      const b = u8[i];
-      out += QUOTE_SAFE[b] ? String.fromCharCode(b) : "%" + HEX[b >> 4] + HEX[b & 15];
-    }
+    for (let i = 0; i < u8.length; i++) out += QUOTE_TABLE[u8[i]];
     return out;
   }
 
@@ -296,12 +340,12 @@
   function* iterDataUris(text) {
     const n = text.length;
     let pos = 0;
-    // ASCII-only lowering: Python lowercases the whole string here and indexes
-    // the original with the result's offsets, which only holds while the two
-    // have the same length. They do not for U+0130, in either language.
-    const low = asciiLower(text);
+    /* ASCII-only case folding: Python lowercases the whole string here and
+     * indexes the original with the result's offsets, which only holds while
+     * the two have the same length. They do not for U+0130, in either
+     * language, so this searches the original instead of a lowered copy. */
     for (;;) {
-      const i = low.indexOf("data:image/", pos);
+      const i = ciIndexOf(RE_DATA_IMAGE_URI, text, pos);
       if (i < 0) return;
       let k = i + "data:image/".length;
       const mimeStart = k;
@@ -428,14 +472,26 @@
     return true;
   }
 
-  function asciiLower(s) {
-    let out = "";
-    for (let i = 0; i < s.length; i++) {
-      const c = s.charCodeAt(i);
-      out += (c >= 65 && c <= 90) ? String.fromCharCode(c + 32) : s[i];
-    }
-    return out;
+  /**
+   * indexOf for a lowercase ASCII needle, matched case-insensitively against
+   * the original text.
+   *
+   * This is what upstream's `text.lower().find(needle)` amounts to, minus the
+   * lowered copy of the whole document, which for a page carrying a megabyte
+   * of embedded base64 was the dominant cost of a scan. The `i` flag without
+   * `u` folds ASCII letters and nothing else: U+0130 and U+0131 are left alone
+   * because their case mapping leaves the non-ASCII side non-ASCII, which is
+   * precisely the ASCII-only rule this port already chose over upstream's
+   * length-changing `str.lower()`.
+   */
+  function ciIndexOf(re, text, from) {
+    re.lastIndex = from;
+    const m = re.exec(text);
+    return m ? m.index : -1;
   }
+
+  const RE_DATA_IMAGE_URI = /data:image\//gi;
+  const RE_SCRIPT_OPEN = /<script/gi;
 
   // ---- linear tag-block scanning ----------------------------------------
   //
@@ -830,9 +886,9 @@
     let lastEnd = 0;
     let pos = 0;
     const n = text.length;
-    const low = asciiLower(text);
+    // ASCII-only, for the reason spelled out on ciIndexOf and iterDataUris.
     for (;;) {
-      const i = low.indexOf("<script", pos);
+      const i = ciIndexOf(RE_SCRIPT_OPEN, text, pos);
       if (i < 0) return;
       const after = i + 7;
       if (after >= n || !(">" + HTML_SPACE + "/").includes(text[after])) { pos = i + 1; continue; }

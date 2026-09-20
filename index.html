@@ -13,16 +13,14 @@
   <!-- Deferred, and in the head rather than at the end of the body: the fetch
        then overlaps parsing instead of starting after it, while execution still
        waits for the document. Order is preserved, which these files rely on -
-       each one reads the globals the ones above it defined. -->
-  <script defer src="js/pyre.js"></script>
-  <script defer src="js/layer_a.js"></script>
-  <script defer src="js/image_meta.js"></script>
-  <script defer src="js/av_meta.js"></script>
-  <script defer src="js/container_meta.js"></script>
+       each one reads the globals the ones above it defined.
+
+       The cleaning engines are not here. js/engine.js starts a worker that
+       loads them through importScripts, off this thread and off the critical
+       path, and loads them here only when there is no worker to start, which
+       is the file:// case. They are most of this page's JavaScript and the
+       first screen uses none of it. -->
   <script defer src="js/api.js"></script>
-  <script defer src="js/stylometry.js"></script>
-  <script defer src="js/gumbel.js"></script>
-  <script defer src="js/engine_ops.js"></script>
   <script defer src="js/engine.js"></script>
   <script defer src="js/detectors.js"></script>
   <script defer src="js/i18n.js"></script>
