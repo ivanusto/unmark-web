@@ -194,6 +194,17 @@ NAMED_VALUES = [
     ("notes", "aigc"),
     ("notes", "this is not aigcx"),
     ("author", "synthid"),
+    # Upstream #345 widened the naming keys and the free-text markers.
+    ("generated-with", "Claude"),
+    ("generated_with", "Claude"),
+    ("written-by", "Gemini"),
+    ("produced_by", "Sora"),
+    ("authored-by", "a person"),
+    ("made-with", "ChatGPT"),
+    ("description", "Generated with Claude Code"),
+    ("description", "written by a human being"),
+    ("summary", "produced using a camera"),
+    ("summary", "generatedwith no space is prose"),
 ]
 
 B64_CASES = [
@@ -328,6 +339,18 @@ HTMLS = {
     "c2pa_meta": '<meta name="c2pa" content="manifest">',
 }
 
+# The subagent definition from upstream's own regression test: `tools` carries
+# "claude" inside an MCP tool name, and `model` is in AI_FRONTMATTER_KEYS.
+AGENT_FM = (
+    "---\n"
+    "name: inbox-router\n"
+    'description: "Triages the inbox and routes each mail to its project."\n'
+    "tools: Read, Write, Edit, mcp__claude_ai_acme__mail__get-message\n"
+    "model: opus\n"
+    "---\n"
+    "\nYou are the inbox router.\n"
+)
+
 MARKDOWNS = {
     "empty": "",
     "no_frontmatter": "# Title\n\nJust a body.\n",
@@ -347,6 +370,22 @@ MARKDOWNS = {
     "unterminated_frontmatter": "---\ntitle: Demo\ngenerator: Claude\nBody\n",
     "not_at_start": "Intro\n---\ngenerator: Claude\n---\nBody\n",
     "dotted_key": "---\nai.generator: Claude\ntitle: Demo\n---\nBody\n",
+    # Upstream #345: a Claude Code agent or skill definition is configuration,
+    # not provenance, and clean_markdown drops the whole key on a value hit, so
+    # cleaning one used to delete its tool grant and its model outright.
+    "agent_definition": AGENT_FM,
+    "agent_definition_allowed_tools": AGENT_FM.replace("tools:", "allowed-tools:"),
+    "agent_definition_with_watermark": AGENT_FM.replace(
+        'description: "Triages the inbox and routes each mail to its project."',
+        "description: Generated with Claude Code"),
+    "agent_shape_two_of_three": "---\nname: notes\ndescription: about things\nmodel: gpt-4\n---\n\nbody\n",
+    "prose_mentioning_vendor": "---\ntitle: How to use Claude Code\nauthor: JJ\n---\n\nbody\n",
+    "generated_with_key": "---\ntitle: Notes\ngenerated-with: Claude\n---\n\nbody\n",
+    "made_with_key": "---\ntitle: Notes\nmade_with: ChatGPT\n---\n\nbody\n",
+    "written_by_key": "---\ntitle: Notes\nwritten-by: Gemini\n---\n\nbody\n",
+    "c2pa_key": "---\ntitle: Notes\nc2pa: manifest\n---\n\nbody\n",
+    "model_gpt4_non_agent": "---\ntitle: Notes\nmodel: gpt-4\n---\n\nbody\n",
+    "free_text_generated_with": "---\nabstract: Generated with a large language model\n---\nBody\n",
     "embedded_png": '![x](data:image/png;base64,' + base64.b64encode(PNG_AI).decode() + ')\n',
     "frontmatter_and_embedded_png": ("---\ngenerator: Claude\n---\n![x](data:image/png;base64,"
                                      + base64.b64encode(PNG_AI).decode() + ")\n"),
