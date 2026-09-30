@@ -88,7 +88,7 @@
       "id": "watermarks-remover/service/scripts/container_meta.py#data-uris",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/container_meta.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/container_meta.py",
-      "sha256": "9efdac5d66d41ce8e75800acef698655dbbfb1d87a2a4a6afa7459ea5b90e3b6",
+      "sha256": "758a091b46e829015c667633cc542e43b6d91b702ec47d640567d10a5546431e",
       "slice": {
         "from": "^def _blob_hits\\(",
         "until": "^def _iter_tag_blocks\\("
@@ -97,13 +97,13 @@
         "js/container_meta.js",
         "tests/test_container_meta_parity.py"
       ],
-      "comment": "_blob_hits and the embedded data-URI scanner (_iter_data_uris, _skip_data_uri_candidate, _inspect_embedded_data_uris, _clean_embedded_data_uris), ported in full. Upstream #306 rewrote these from regexes into linear character scans to remove a polynomial ReDoS; the reasoning holds here for a different reason, since what it stalls in a browser is the tab rather than a single-process service. An image inside a data: URI is handed to the same strip_png/strip_jpeg/strip_webp/strip_isobmff this port already mirrors."
+      "comment": "_blob_hits and the embedded data-URI scanner (_iter_data_uris, _skip_data_uri_candidate, _inspect_embedded_data_uris, _clean_embedded_data_uris), ported in full. Upstream #306 rewrote these from regexes into linear character scans to remove a polynomial ReDoS; the reasoning holds here for a different reason, since what it stalls in a browser is the tab rather than a single-process service. An image inside a data: URI is handed to the same strip_png/strip_jpeg/strip_webp/strip_isobmff this port already mirrors. Since upstream #364 _iter_data_uris searches an ASCII-lowered copy (str.maketrans over A-Z) instead of str.lower(), which is the rule this port always used; see the #html entry."
     },
     {
       "id": "watermarks-remover/service/scripts/container_meta.py#tag-blocks",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/container_meta.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/container_meta.py",
-      "sha256": "9554a5fb001530f30f4e2c0e7710d03d70112772a799dbf4094b40cf64d38e34",
+      "sha256": "057d8d9d8cca39e479cf405998488a73cb3b6f7ced3c1a675cfda0332956cc65",
       "slice": {
         "from": "^def _iter_tag_blocks\\(",
         "until": "^_FM_RE = re\\.compile"
@@ -112,7 +112,7 @@
         "js/container_meta.js",
         "tests/test_container_meta_parity.py"
       ],
-      "comment": "_iter_tag_blocks, _drop_tag_blocks and _drop_blocks_if: the linear pairing of opening and closing tags that replaced the lazy '.*?</close>' idiom, preserving its match semantics."
+      "comment": "_iter_tag_blocks, _drop_tag_blocks and _drop_blocks_if: the linear pairing of opening and closing tags that replaced the lazy '.*?</close>' idiom, preserving its match semantics. Since upstream #366 the range also holds the HTML and Markdown provenance-comment helpers built on them (_PROVENANCE_COMMENT_RE, _MD_FENCE_RE, _comment_is_provenance, _md_prose_spans, _provenance_comments, _drop_provenance_comments), ported in full. _MD_FENCE_RE is written out by hand rather than with the JS `m` flag, because JS's ^ and $ also hold at a carriage return and at U+2028/U+2029, where Python's re.M holds only at a line feed. The comment pattern is also the first here to lean on Python's `.` (anything but a line feed) and Unicode `\\d`, which js/pyre.js now translates."
     },
     {
       "id": "watermarks-remover/service/scripts/container_meta.py#svg",
@@ -133,7 +133,7 @@
       "id": "watermarks-remover/service/scripts/container_meta.py#markdown",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/container_meta.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/container_meta.py",
-      "sha256": "868ad8818b39450467ca52d30cd75fb343e3d985fe183c6af7eb2d4924d9c343",
+      "sha256": "fa4275b3086ab7d3fa312c659931fc82eda795bac51d6933eadad52a10d4e20d",
       "slice": {
         "from": "^_FM_RE = re\\.compile",
         "until": "^# LaTeX \\(\\.tex / \\.ltx\\)$"
@@ -142,13 +142,13 @@
         "js/container_meta.js",
         "tests/test_container_meta_parity.py"
       ],
-      "comment": "_FM_RE, _parse_simple_yaml_keys, inspect_markdown and clean_markdown, ported in full. The nested-block rule matters more than it looks: dropping an AI key has to drop the indented lines under it, or `model:` goes and `name: claude-opus` stays. Upstream #345 is ported in full: a frontmatter block carrying name AND description AND (tools OR allowed-tools) is a Claude Code agent or skill definition, recognised by that shape because inspect_container never sees a path, and its model/tools/allowed-tools/name/description keys are configuration rather than provenance. Values are still scanned inside one, so `description: Generated with Claude Code` is still caught and still stripped. This matters because clean_markdown drops the whole key on a value hit, so cleaning such a file used to delete the agent's tool grant and its model while the file still parsed. Upstream records the key/value asymmetry in docs/frontmatter-scanning.md."
+      "comment": "_FM_RE, _parse_simple_yaml_keys, inspect_markdown and clean_markdown, ported in full. The nested-block rule matters more than it looks: dropping an AI key has to drop the indented lines under it, or `model:` goes and `name: claude-opus` stays. Upstream #345 is ported in full: a frontmatter block carrying name AND description AND (tools OR allowed-tools) is a Claude Code agent or skill definition, recognised by that shape because inspect_container never sees a path, and its model/tools/allowed-tools/name/description keys are configuration rather than provenance. Values are still scanned inside one, so `description: Generated with Claude Code` is still caught and still stripped. This matters because clean_markdown drops the whole key on a value hit, so cleaning such a file used to delete the agent's tool grant and its model while the file still parsed. Upstream records the key/value asymmetry in docs/frontmatter-scanning.md. Upstream #366 is ported in full: inspect_markdown reports, and clean_markdown drops, <!-- --> comments that name an AI tool or say AI-generated, C2PA or content credential, outside fenced code blocks only."
     },
     {
       "id": "watermarks-remover/service/scripts/container_meta.py#html",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/container_meta.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/container_meta.py",
-      "sha256": "8a2c43570b2d5834c8c245b8b8605b6e7012b7929c95e2e506a1a545d601388c",
+      "sha256": "c4cc3a1d2b3bfbd6663998f9329e81c5b3071330e3988ee7bd37b5a41d57a817",
       "slice": {
         "from": "^_META_TAG_RE = re\\.compile",
         "until": "^# SVG$"
@@ -157,7 +157,7 @@
         "js/container_meta.js",
         "tests/test_container_meta_parity.py"
       ],
-      "comment": "The whole HTML section: _meta_attrs, _is_cms_generator_meta, _meta_tag_is_ai, _find_tag_end, _iter_script_blocks, _script_tag_is_jsonld, inspect_html and clean_html. Ported in full, with one deliberate divergence, which is the second one this port carries after the truncated-MP4 fix that upstream later took as #242. _iter_script_blocks and _iter_data_uris lowercase the whole document to find '<script' and 'data:image/', then index the ORIGINAL string with the result's offsets. That holds only while lowercasing preserves length, and U+0130 does not: it lowercases to two characters in Python and in JavaScript alike, so every offset after it is off by one. One such character earlier in a file hides a JSON-LD provenance block from upstream's inspect AND its clean, and mis-parses an embedded data URI into a different MIME type and a truncated payload. js/container_meta.js lowercases ASCII only, which cannot change length. Reported as guillaumemeyer/watermarks-remover#354. tests/test_container_meta_parity.py asserts the divergence in both directions, so it fails loudly if upstream fixes this and the two converge again."
+      "comment": "The whole HTML section: _meta_attrs, _is_cms_generator_meta, _meta_tag_is_ai, _find_tag_end, _iter_script_blocks, _script_tag_is_jsonld, inspect_html and clean_html. Ported in full. This used to carry a deliberate divergence: _iter_script_blocks and _iter_data_uris lowercased the whole document to find '<script' and 'data:image/', then indexed the ORIGINAL string with the result's offsets, and U+0130 lowercases to two characters, so one such character hid a JSON-LD provenance block and mis-parsed an embedded data URI. js/container_meta.js always lowercased ASCII only. Reported as guillaumemeyer/watermarks-remover#354 and fixed upstream by #364 the same way, so the two agree again and tests/test_container_meta_parity.py now asserts agreement on the inputs that used to separate them. Upstream #366 (provenance comments, reported and dropped after the JSON-LD pass) and #373 (quote-aware _META_ATTR_RE and _META_CONTENT_VALUE_RE, so an apostrophe inside a double-quoted content value neither ends it early nor hides a marker behind it) are ported in full."
     }
   ]
 }
