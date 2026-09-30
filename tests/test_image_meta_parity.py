@@ -97,6 +97,12 @@ XMP_UUID = b"\xbe\x7a\xcf\xcb\x97\xa9\x42\xe8\x9c\x71\x99\x94\x91\xe3\xaf\xac"
 C2PA_BMFF_UUID = bytes.fromhex("d8fec3d61b0e483c92975828877ec481")
 
 
+# Coded media that happens to contain every marker the whole-file fallback
+# looks for, in both cases, plus the C2PA user type after a `uuid` fourcc.
+MDAT_CHANCE_MARKERS = (b"\x00" * 32 + b"jumb" + b"\x00" * 28 + b"uuid" + C2PA_BMFF_UUID
+                       + b"\x00" * 24 + b"JUMB" + b"\x00" * 12 + b"c2pa" + b"\x00" * 12 + b"C2PA" + b"\x00" * 32)
+
+
 def iso_box(fourcc: bytes, payload: bytes) -> bytes:
     return struct.pack(">I", len(payload) + 8) + fourcc + payload
 
@@ -366,6 +372,28 @@ SAMPLES = {
         + b"uuid"
         + C2PA_BMFF_UUID
         + bytes(range(1, 32))
+    ),
+    # Upstream #371: short marker strings occur by chance in coded media. A box
+    # walk that reached the end relies on the boxes it parsed and no longer
+    # byte-scans mdat; only a walk that stopped early still falls back to it.
+    "avif_mdat_chance_markers": (
+        iso_box(b"ftyp", b"avif\x00\x00\x00\x00avifmif1")
+        + iso_box(b"meta", iso_meta([(b"hdlr", b"\x00" * 12 + b"pict")]))
+        + iso_box(b"mdat", MDAT_CHANCE_MARKERS)
+    ),
+    "avif_mdat_chance_markers_truncated": (
+        iso_box(b"ftyp", b"avif\x00\x00\x00\x00avifmif1")
+        + iso_box(b"meta", iso_meta([(b"hdlr", b"\x00" * 12 + b"pict")]))
+        + iso_box(b"mdat", MDAT_CHANCE_MARKERS)
+    )[:-4],
+    "avif_mdat_prov_uuid_only": (
+        iso_box(b"ftyp", b"avif\x00\x00\x00\x00avifmif1")
+        + iso_box(b"mdat", b"\x00" * 16 + b"uuid" + C2PA_BMFF_UUID + b"\x00" * 16)
+    ),
+    "avif_mdat_markers_short_trailer": (
+        iso_box(b"ftyp", b"avif\x00\x00\x00\x00avifmif1")
+        + iso_box(b"mdat", MDAT_CHANCE_MARKERS)
+        + b"\x00\x01\x02"
     ),
     "png_truncated_tail": make_truncated_png([(b"tEXt", b"Software\x00ChatGPT")], b"\x01\x02\x03\x04\x05\x06"),
     "bmp_clean": make_bmp(),

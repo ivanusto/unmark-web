@@ -87,6 +87,22 @@ def udta(text: bytes) -> bytes:
     return iso_box(b"udta", b"\x00\x00\x00\x00tool" + text)
 
 
+def _chance_media() -> bytes:
+    media = bytearray(256)
+    media[32:36] = b"jumb"
+    media[64:84] = b"uuid" + C2PA_BMFF_UUID
+    media[128:132] = b"JUMB"
+    media[160:164] = b"c2pa"
+    return bytes(media)
+
+
+# The mdat is last, so truncating the file cuts into it.
+MP4_CHANCE = (iso_box(b"ftyp", b"isom\x00\x00\x02\x00isomiso2avc1mp41")
+              + iso_box(b"free", bytes(16))
+              + iso_box(*moov(udta(b"Lavf/Remotion")))
+              + iso_box(b"mdat", _chance_media()))
+
+
 def syncsafe(n: int) -> bytes:
     return bytes([(n >> 21) & 0x7F, (n >> 14) & 0x7F, (n >> 7) & 0x7F, n & 0x7F])
 
@@ -183,6 +199,13 @@ SAMPLES: dict[str, bytes] = {
     "mp4_uuid_c2pa_bytes_bad_offset": make_mp4(
         [moov(), (b"uuid", b"\x00" + C2PA_BMFF_UUID + b"not-a-manifest")]
     ),
+    # Upstream #371, with its own regression shape: marker bytes in mdat of a
+    # file whose box walk completes are chance, not a manifest. Truncated, the
+    # same bytes are in the unparsed tail and the fallback scan still reports
+    # them, on both drivers.
+    "mp4_mdat_chance_markers": MP4_CHANCE,
+    "mp4_mdat_chance_markers_truncated": MP4_CHANCE[:-8],
+    "mp4_mdat_chance_markers_short_trailer": MP4_CHANCE + b"\x00\x01\x02",
     # ---- WAV
     "wav_clean": make_wav([]),
     "wav_c2pa": make_wav([(b"C2PA", JUMBF)]),
