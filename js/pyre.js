@@ -10,7 +10,10 @@
  *    explicit lookarounds on the same class,
  *  - `\s` / `str.strip()` / `str.splitlines()` -> Python's exact whitespace and
  *    line-break sets (`\x1c-\x1f`, `\x85` included; U+FEFF excluded),
- *  - `re.IGNORECASE` -> `iu`, plus Python's extra `i` ~ `ı`/`İ` equivalence.
+ *  - `re.IGNORECASE` -> `iu`, plus Python's extra `i` ~ `ı`/`İ` equivalence,
+ *  - `.` (without DOTALL: anything but `\n`; JS's `.` also refuses `\r`,
+ *    U+2028 and U+2029) -> `[^\n]`,
+ *  - `\d` (Unicode decimal digits for a str pattern; JS's is ASCII) -> `\p{Nd}`.
  *
  * This lived inside js/stylometry.js until a second port needed the same
  * rules. It is the same code, moved: the stylometry parity suite is what says
@@ -64,11 +67,13 @@
         if (n === "b") out += inClass ? "\\b" : B_BOUNDARY;
         else if (n === "s") out += inClass ? S_CLASS : "[" + S_CLASS + "]";
         else if (n === "w") out += inClass ? W_CLASS : "[" + W_CLASS + "]";
+        else if (n === "d") out += "\\p{Nd}";
         else out += "\\" + n;
         continue;
       }
       if (c === "[" && !inClass) { inClass = true; out += c; continue; }
       if (c === "]" && inClass) { inClass = false; out += c; continue; }
+      if (c === "." && !inClass) { out += "[^\\n]"; continue; }
       // Only under IGNORECASE. A case-sensitive Python pattern matches "i" and
       // nothing else, so widening it there would quietly match Turkish text
       // that CPython does not.

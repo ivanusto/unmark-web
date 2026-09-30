@@ -41,6 +41,18 @@ CASES = [
     ("a\\s+b", False, "a\x1cb"), ("a\\s+b", False, "a \t b"),
     ("\\w+", False, "中文"), ("\\w+", False, "__x"), ("\\w+", False, "!!"),
     ("[\\w-]+", False, "a-b_c"),
+    # Python's `.` without DOTALL refuses only "\n"; JS's also refuses "\r",
+    # U+2028 and U+2029. Upstream #366 and #373 are the first patterns here to
+    # lean on it: `dall.?e`, `content.?credential`, and a tempered dot that
+    # reads an attribute value up to its closing quote.
+    ("a.b", False, "a\rb"), ("a.b", False, "a\u2028b"), ("a.b", False, "a\u2029b"),
+    ("a.b", False, "a\nb"), ("a.b", False, "a\x85b"), ("a[.]b", False, "axb"), ("a\\.b", False, "axb"),
+    ("content.?credential", True, "Content\rCredential"),
+    ("(\"|')((?:(?!\\1).)*)\\1", False, '"Bob\'s\rline"'),
+    ("(\"|')((?:(?!\\1).)*)\\1", False, '"Bob\'s\nline"'),
+    # Python's `\d` in a str pattern is any Unicode decimal digit.
+    ("\\bgpt-?\\d", True, "gpt-\u0664"), ("\\bgpt-?\\d", True, "GPT\uff15"),
+    ("\\bgpt-?\\d", True, "gpt-\u00b2"), ("[\\d]+", False, "\u0967\u0968"),
     # The marker alternation this port actually ships.
     ("\\b(?:generated|created|made|written|produced|authored)\\s+(?:with|by|using)\\b", True,
      "Generated with Claude Code"),
