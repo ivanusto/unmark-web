@@ -728,7 +728,7 @@
     const F = fmt.toUpperCase();
     const findings = [];
     let hasC2pa = false, hasAi = false;
-    const { boxes } = parseIsobmffBoxes(u8);
+    const { boxes, scannedEnd } = parseIsobmffBoxes(u8);
     if (!boxes.length) {
       // Box parsing failed (typically the first box's size overruns a truncated
       // download), which is exactly when the whole-file byte scan is most
@@ -798,7 +798,12 @@
     /* js/av_meta.js walks an MP4 box by box so a multi-gigabyte file never has
      * to be held in memory, and runs this scan once over the whole file in
      * chunks instead. Every other caller keeps it here. */
-    if (byteScan) {
+    /* A raw hit in a fully parsed media payload is not manifest evidence: any
+     * compressed stream can coincidentally contain these short ASCII markers
+     * (upstream #371). The whole-file scan stays as a recovery path only for a
+     * box walk that stopped early, a truncated container such as #167/#176,
+     * so a file that parsed to the end is not scanned at all. */
+    if (byteScan && scannedEnd < u8.length) {
       const whole = containsAny(u8, C2PA_MARKERS);
       if (whole.length && !hasC2pa) {
         hasC2pa = true;
