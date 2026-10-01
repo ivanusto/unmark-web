@@ -2,8 +2,6 @@
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
-> Renamed from `watermarks-remover-web` in August 2026, at the upstream maintainer's request, so it isn't mistaken for an official component. GitHub redirects the old repository URL; the demo moved to the address below.
-
 **Removes the digital watermarks and provenance marks that AI tools leave on what they generate**: the invisible Unicode
 characters hidden in text, and the C2PA, EXIF, XMP and ID3 metadata carried inside image, audio and video files. It also
 tells you, honestly, which watermarks it cannot remove: statistical ones live in how tokens were sampled and pixel-domain
