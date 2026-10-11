@@ -101,6 +101,11 @@ MP4_CHANCE = (iso_box(b"ftyp", b"isom\x00\x00\x02\x00isomiso2avc1mp41")
               + iso_box(b"free", bytes(16))
               + iso_box(*moov(udta(b"Lavf/Remotion")))
               + iso_box(b"mdat", _chance_media()))
+# Only the C2PA user type after a `uuid` fourcc, no ASCII marker, so a hit can
+# only come from the content-provenance scan, the second gate upstream #382 fixed.
+MP4_PROV_CHANCE = (iso_box(b"ftyp", b"isom\x00\x00\x02\x00isomiso2avc1mp41")
+                   + iso_box(*moov())
+                   + iso_box(b"mdat", b"\x00" * 16 + b"uuid" + C2PA_BMFF_UUID + b"\x00" * 16))
 
 
 def syncsafe(n: int) -> bytes:
@@ -206,6 +211,24 @@ SAMPLES: dict[str, bytes] = {
     "mp4_mdat_chance_markers": MP4_CHANCE,
     "mp4_mdat_chance_markers_truncated": MP4_CHANCE[:-8],
     "mp4_mdat_chance_markers_short_trailer": MP4_CHANCE + b"\x00\x01\x02",
+    # Upstream #382: 1 to 7 bytes after the last box are padding, not a cut-off
+    # box header, so the walk counts as complete and neither scan runs. 8 bytes
+    # are a header whose box overruns the file, and the fallback is back.
+    "mp4_mdat_chance_markers_tail_1": MP4_CHANCE + b"\x00",
+    "mp4_mdat_chance_markers_tail_4": MP4_CHANCE + b"\x00\x00\x00\x00",
+    "mp4_mdat_chance_markers_tail_7": MP4_CHANCE + b"\x01\x02\x03\x04\x05\x06\x07",
+    "mp4_mdat_chance_markers_tail_8": MP4_CHANCE + b"\xff" * 8,
+    "mp4_mdat_prov_chance": MP4_PROV_CHANCE,
+    "mp4_mdat_prov_chance_tail_4": MP4_PROV_CHANCE + b"\x00\x00\x00\x00",
+    "mp4_mdat_prov_chance_tail_7": MP4_PROV_CHANCE + b"\x01\x02\x03\x04\x05\x06\x07",
+    "mp4_mdat_prov_chance_tail_8": MP4_PROV_CHANCE + b"\xff" * 8,
+    # A real content-provenance box cut off mid-manifest: no ASCII marker, and
+    # the 112-byte tail it leaves is a genuine truncation the user-type scan
+    # still has to catch.
+    "mp4_c2pa_prov_truncated": (
+        make_mp4([moov()], mdat=16)
+        + iso_box(b"uuid", C2PA_BMFF_UUID + b"manifest\x00" + bytes(range(1, 100)))[:112]
+    ),
     # ---- WAV
     "wav_clean": make_wav([]),
     "wav_c2pa": make_wav([(b"C2PA", JUMBF)]),

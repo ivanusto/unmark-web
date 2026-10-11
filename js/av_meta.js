@@ -637,8 +637,10 @@
     // The whole-file scan the buffer driver runs at the end of inspectIsobmff,
     // before the moov/udta findings are appended. Since upstream #371 it only
     // runs when the box walk stopped short of the end, so a complete file is
-    // inspected from its box headers and non-media boxes alone.
-    if (scannedEnd < file.size) {
+    // inspected from its box headers and non-media boxes alone. "Short of the
+    // end" means 8 or more bytes left (upstream #382): 1 to 7 bytes of padding
+    // after the last box is a complete walk, not a truncation.
+    if (file.size - scannedEnd >= 8) {
       const whole = await containsAnyInFile(file, IM.C2PA_MARKERS);
       if (whole.length && !hasC2pa) {
         hasC2pa = true;
