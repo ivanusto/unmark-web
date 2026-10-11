@@ -802,8 +802,12 @@
      * compressed stream can coincidentally contain these short ASCII markers
      * (upstream #371). The whole-file scan stays as a recovery path only for a
      * box walk that stopped early, a truncated container such as #167/#176,
-     * so a file that parsed to the end is not scanned at all. */
-    if (byteScan && scannedEnd < u8.length) {
+     * so a file that parsed to the end is not scanned at all. A gap of 1 to 7
+     * bytes is not an early stop (upstream #382): the walk runs while
+     * pos + 8 <= length, so a fully parsed container with trailing padding
+     * leaves that much behind. Only 8 or more bytes can hold a box header,
+     * the same threshold stripIsobmff and js/av_meta.js use. */
+    if (byteScan && u8.length - scannedEnd >= 8) {
       const whole = containsAny(u8, C2PA_MARKERS);
       if (whole.length && !hasC2pa) {
         hasC2pa = true;

@@ -395,6 +395,31 @@ SAMPLES = {
         + iso_box(b"mdat", MDAT_CHANCE_MARKERS)
         + b"\x00\x01\x02"
     ),
+    # Upstream #382: 1 to 7 trailing bytes are padding after a complete walk,
+    # 8 are a box header that overruns the file. Only the latter byte-scans.
+    **{
+        f"avif_mdat_markers_tail_{name}": (
+            iso_box(b"ftyp", b"avif\x00\x00\x00\x00avifmif1")
+            + iso_box(b"mdat", MDAT_CHANCE_MARKERS)
+            + tail
+        )
+        for name, tail in (("1", b"\x00"), ("4", b"\x00" * 4),
+                           ("7", b"\x01\x02\x03\x04\x05\x06\x07"), ("8", b"\xff" * 8))
+    },
+    **{
+        f"avif_mdat_prov_uuid_only_tail_{name}": (
+            iso_box(b"ftyp", b"avif\x00\x00\x00\x00avifmif1")
+            + iso_box(b"mdat", b"\x00" * 16 + b"uuid" + C2PA_BMFF_UUID + b"\x00" * 16)
+            + tail
+        )
+        for name, tail in (("4", b"\x00" * 4), ("7", b"\x01\x02\x03\x04\x05\x06\x07"), ("8", b"\xff" * 8))
+    },
+    # A content-provenance box cut off mid-manifest, with no ASCII marker left.
+    "avif_c2pa_prov_truncated": (
+        iso_box(b"ftyp", b"avif\x00\x00\x00\x00avifmif1")
+        + iso_box(b"mdat", b"\x00" * 16)
+        + iso_box(b"uuid", C2PA_BMFF_UUID + b"manifest\x00" + bytes(range(1, 100)))[:112]
+    ),
     "png_truncated_tail": make_truncated_png([(b"tEXt", b"Software\x00ChatGPT")], b"\x01\x02\x03\x04\x05\x06"),
     "bmp_clean": make_bmp(),
     "bmp_trailing_ai": make_bmp(b"digitalSourceType=trainedAlgorithmicMedia"),
