@@ -20,6 +20,7 @@
   const AvMeta = req("av_meta.js") || root.AvMeta;
   const ContainerMeta = req("container_meta.js") || root.ContainerMeta;
   const Stylometry = req("stylometry.js") || root.Stylometry;
+  const ZhStyle = req("zh_style.js") || root.ZhStyle;
   const Gumbel = req("gumbel.js") || root.Gumbel;
 
   const bytesOf = async (file) => new Uint8Array(await file.arrayBuffer());
@@ -96,6 +97,14 @@
      * "score / threshold" column without holding js/stylometry.js itself. */
     stylometryScore({ text }) {
       return { report: Stylometry.score(text), defaultThreshold: Stylometry.DEFAULT_THRESHOLD };
+    },
+
+    /* Repo-owned CJK counterpart of stylometryScore (js/zh_style.js). The
+     * residual sentences ride along so the rewrite recheck can name them to the
+     * model without the page holding the module. */
+    zhStyleScore({ text }) {
+      const report = ZhStyle.score(text);
+      return { report, sentences: ZhStyle.residualSentences(text, report, 12), defaultThreshold: ZhStyle.DEFAULT_THRESHOLD };
     },
 
     /* An absent window or threshold is filled in here, where the defaults live.

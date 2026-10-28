@@ -158,21 +158,50 @@
    * cannot reach a plain-HTTP local endpoint anyway — simply never shows it. */
   const REWRITE_KEY = "unmark-web.rewrite";
   const rewrite = { enabled: false, busy: false, ctrl: null, customPrompt: null, timeoutMs: 305000 };
+  const RECHECK_ROUNDS = 2;
+
+  const rewriteMode = () => ($("rewrite-mode").value === "light" ? "light" : "deep");
+  const rewriteDefaultPrompt = () => t(rewriteMode() === "light" ? "rewritePromptDefault" : "rewritePromptDeep");
 
   function saveRewritePrefs() {
     try {
-      const data = { model: $("rewrite-model").value };
+      const data = { model: $("rewrite-model").value, mode: rewriteMode(), recheck: $("rewrite-recheck").checked };
       if (rewrite.customPrompt) data.prompt = rewrite.customPrompt;   // defaults follow the UI language instead
       localStorage.setItem(REWRITE_KEY, JSON.stringify(data));
     } catch (_) { /* storage unavailable (file://, private mode) */ }
   }
 
   function applyRewritePromptDefault() {
-    if (rewrite.enabled && rewrite.customPrompt == null) $("rewrite-prompt").value = t("rewritePromptDefault");
+    if (rewrite.enabled && rewrite.customPrompt == null) $("rewrite-prompt").value = rewriteDefaultPrompt();
   }
 
   function clearRewriteOutput() {
-    if (rewrite.enabled && !rewrite.busy) $("rewrite-output").textContent = "";
+    if (!rewrite.enabled || rewrite.busy) return;
+    $("rewrite-output").textContent = "";
+    $("rewrite-meter").hidden = true;
+    $("rewrite-meter").textContent = "";
+  }
+
+  const zhHits = (rep) => (rep.matched || []).reduce((a, m) => a + m.count, 0) + (rep.structure || []).length;
+
+  /* Before/after readout of the Chinese heuristic. Shown only when both sides
+   * were long enough to score; anything else would be a number without meaning. */
+  async function showRewriteMeter(source, result, rounds) {
+    const meter = $("rewrite-meter");
+    meter.hidden = true;
+    try {
+      const [a, b] = await Promise.all([
+        Engine.call("zhStyleScore", { text: source }),
+        Engine.call("zhStyleScore", { text: result }),
+      ]);
+      if (a.report.status !== "ok" || b.report.status !== "ok") return;
+      if (outputEl.textContent !== source) return;   // the input moved on while we scored
+      meter.textContent = t("rewriteMeter", {
+        before: a.report.score.toFixed(2), after: b.report.score.toFixed(2),
+        hitsBefore: zhHits(a.report), hitsAfter: zhHits(b.report), rounds,
+      });
+      meter.hidden = false;
+    } catch (_) { /* engine unavailable: no meter, the rewrite itself stands */ }
   }
 
   function setRewriteBusy(on) {
@@ -181,27 +210,64 @@
     $("btn-rewrite-cancel").hidden = !on;
   }
 
+  const replyText = (res) => {
+    const msg = res && res.choices && res.choices[0] && res.choices[0].message;
+    const content = msg && typeof msg.content === "string" ? msg.content.trim() : "";
+    if (!content) throw new Error("empty response from the endpoint");
+    return content;
+  };
+
   async function runRewrite() {
     if (rewrite.busy) return;
     const text = outputEl.textContent;
     if (!text.trim()) { toast(t("rewriteEmpty"), "⚠️"); return; }
     const out = $("rewrite-output");
     out.textContent = t("rewriteBusy");
+    $("rewrite-meter").hidden = true;
     rewrite.ctrl = new AbortController();
     setRewriteBusy(true);
+    const system = $("rewrite-prompt").value;
+    const model = $("rewrite-model").value.trim();
+    const call = (user) => WmApi.llmRewrite(system, user, model, rewrite.ctrl.signal, rewrite.timeoutMs);
+    // The user may have kept typing; a reply that no longer matches what is on
+    // screen is dropped rather than shown against the wrong source text.
+    const stale = () => outputEl.textContent !== text;
+    let current = "";
+    let rounds = 0;
     try {
-      const res = await WmApi.llmRewrite($("rewrite-prompt").value, text, $("rewrite-model").value.trim(), rewrite.ctrl.signal, rewrite.timeoutMs);
-      // The user may have kept typing; a reply that no longer matches what is on
-      // screen is dropped rather than shown against the wrong source text.
-      if (outputEl.textContent !== text) { out.textContent = ""; return; }
-      const msg = res && res.choices && res.choices[0] && res.choices[0].message;
-      const content = msg && typeof msg.content === "string" ? msg.content.trim() : "";
-      if (!content) throw new Error("empty response from the endpoint");
-      out.textContent = content;                       // textContent: model output is never markup here
-    } catch (e) {
-      const reason = String((e && e.message) || e);
-      out.textContent = "";
-      toast(reason === "cancelled" ? t("rewriteCancelled") : t("rewriteFailed", { msg: reason }), "⚠️");
+      try {
+        current = replyText(await call(text));
+      } catch (e) {
+        const reason = String((e && e.message) || e);
+        out.textContent = "";
+        toast(reason === "cancelled" ? t("rewriteCancelled") : t("rewriteFailed", { msg: reason }), "⚠️");
+        return;
+      }
+      if (stale()) { out.textContent = ""; return; }
+      out.textContent = current;                       // textContent: model output is never markup here
+      try {
+        if ($("rewrite-recheck").checked) {
+          for (let n = 1; n <= RECHECK_ROUNDS; n++) {
+            const scored = await Engine.call("zhStyleScore", { text: current });
+            const st = scored.report.status;
+            if ((st !== "ok" && st !== "insufficient_length") || !scored.sentences.length) break;
+            out.textContent = current + "\n\n" + t("rewriteRechecking", { n });
+            const next = replyText(await call(t("rewriteRecheckTemplate", {
+              sentences: scored.sentences.map((x) => "- " + x).join("\n"), text: current,
+            })));
+            if (stale()) { out.textContent = ""; return; }
+            current = next;
+            rounds = n;
+            out.textContent = current;
+          }
+        }
+      } catch (e) {
+        // keep the last good output; only the extra round is lost
+        const reason = String((e && e.message) || e);
+        out.textContent = current;
+        toast(reason === "cancelled" ? t("rewriteCancelled") : t("rewriteFailed", { msg: reason }), "⚠️");
+      }
+      await showRewriteMeter(text, current, rounds);
     } finally {
       setRewriteBusy(false);
       rewrite.ctrl = null;
@@ -221,15 +287,20 @@
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(REWRITE_KEY) || "{}") || {}; } catch (_) { /* ignore */ }
     rewrite.customPrompt = typeof saved.prompt === "string" && saved.prompt.trim() ? saved.prompt : null;
-    $("rewrite-prompt").value = rewrite.customPrompt || t("rewritePromptDefault");
+    $("rewrite-mode").value = saved.mode === "light" ? "light" : "deep";
+    $("rewrite-recheck").checked = saved.recheck !== false;
+    $("rewrite-prompt").value = rewrite.customPrompt || rewriteDefaultPrompt();
     $("rewrite-model").value = saved.model || cfg.model || "";
 
     $("rewrite-prompt").addEventListener("change", () => {
       const v = $("rewrite-prompt").value;
-      rewrite.customPrompt = v.trim() && v !== t("rewritePromptDefault") ? v : null;
-      if (rewrite.customPrompt == null) $("rewrite-prompt").value = t("rewritePromptDefault");
+      rewrite.customPrompt = v.trim() && v !== rewriteDefaultPrompt() ? v : null;
+      if (rewrite.customPrompt == null) $("rewrite-prompt").value = rewriteDefaultPrompt();
       saveRewritePrefs();
     });
+    // a hand-edited prompt survives a mode switch; an untouched one follows the mode
+    $("rewrite-mode").addEventListener("change", () => { applyRewritePromptDefault(); saveRewritePrefs(); });
+    $("rewrite-recheck").addEventListener("change", saveRewritePrefs);
     $("rewrite-model").addEventListener("change", saveRewritePrefs);
     $("btn-rewrite").addEventListener("click", runRewrite);
     $("btn-rewrite-cancel").addEventListener("click", () => { if (rewrite.ctrl) rewrite.ctrl.abort(); });
@@ -356,7 +427,7 @@
     if (!results) { $("inspect-overall").classList.remove("show"); return; }
     const cmp = insp.compare ? Object.fromEntries(insp.compare.map((c) => [c.detector, c])) : null;
     for (const layer of Detectors.LAYERS) {
-      const rows = results.filter((r) => r.layer === layer && r.status !== "not_applicable");
+      const rows = results.filter((r) => r.layer === layer && (r.status !== "not_applicable" || (r.meta && r.meta.visible)));
       if (!rows.length) continue;   // a whole layer that does not apply (image rows on text) is not worth a table
       const sec = el("section", "inspect-layer");
       sec.appendChild(el("h3", null, t("inspect.layer." + layer)));

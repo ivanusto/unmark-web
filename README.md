@@ -86,6 +86,14 @@ python3 serve_local.py \
 
 A *Rewrite* panel then appears under the cleaned text, with an editable instruction prompt. It sends `POST /llm/v1/chat/completions` **same-origin**, so the key never enters the browser and the watermarks service's own bearer token is never attached to it.
 
+The panel has two strengths and an optional recheck loop:
+
+- **Light** keeps the sentence structure and only cuts stock phrases. **Deep** (the default) may merge, split and reorder sentences and paragraphs as long as the argument, facts, numbers and names stay. Each strength has its own default prompt; a prompt you edit by hand is kept across strength switches, an untouched one follows the strength and the interface language.
+- **Recheck** (on by default, Chinese text only, at most 2 rounds): the page scores the reply with the zh-style heuristic below, names the sentences that still carry a hit, and asks the model to fix just those. A failed round keeps the last good output.
+- Under the result a one-line meter shows the zh-style score and hit count before and after. It is a yardstick, not a verdict.
+
+Measured on the 24-article model-written zh-TW set: mean score 0.468 (source) -> 0.347 light -> 0.181 deep -> 0.027 deep + recheck. Arabic numerals and Latin names were retained 100%, and the length ratio was 0.92x. Caveat: the recheck targets exactly what the meter measures, so that drop is not independent evidence that the text reads as human-written.
+
 Three things worth being explicit about:
 
 - **It is off by default.** With no `--llm-upstream`, `/llm/*` answers 404 and the panel is not rendered at all.
@@ -117,7 +125,7 @@ The *Inspector* tab is a detection lab, deliberately separated from the cleaners
 | --- | --- | --- | --- |
 | **Character** | invisible / format Unicode, bidi controls, homoglyphs & exotic spaces | browser (`js/layer_a.js`) | deterministic: Layer A can strip it, and re-inspecting proves it |
 | **Metadata** | C2PA / Content Credentials, XMP, EXIF / TIFF tags, AI-generator markers, other | browser (`js/image_meta.js`) | provenance or generator metadata is present in the container |
-| **Statistical** | keyed-Gumbel / EXP, Kirchenbauer (KGW green-list), SynthID-Text, upstream `/detect`, TextSeal (placeholder), stylometry (heuristic) | browser (`js/gumbel.js`) / local sidecar / upstream server | the token sequence carries a sampling watermark **for the key you tested**, nothing more |
+| **Statistical** | keyed-Gumbel / EXP, Kirchenbauer (KGW green-list), SynthID-Text, upstream `/detect`, TextSeal (placeholder), stylometry (heuristic, English), zh-style (heuristic, Chinese) | browser (`js/gumbel.js`) / local sidecar / upstream server | the token sequence carries a sampling watermark **for the key you tested**, nothing more |
 
 Every detector returns the same shape, and *Copy JSON report* exports exactly that:
 
@@ -135,6 +143,19 @@ Three rules the UI enforces, because honesty is the feature:
 - **Detector and cleaner are separate.** *Clean (Layer A) & re-inspect* runs the cleaner once and shows every detector before / after with a *changed?* column. When the statistical rows come back identical, the Overall box says so: *Layer A cleaning did not affect the statistical watermark detectors.*
 - **A heuristic can never say "detected".** Stylometry (burstiness, MATTR, AI-phrase density, ported from upstream's `score_stylometry.py`) is capped at *uncertain* and labelled *heuristic* on the row.
 - **"Unavailable" is not "clean".** Most statistical detectors need the generator's key, tokenizer and a model. On the hosted HTTPS page those report *unavailable*, and the Overall line says statistical watermarks were not tested there and cannot be ruled out. A *clean* is likewise scoped to the key and scheme you tested.
+
+### Chinese AI-cadence heuristic (zh-style)
+
+`js/stylometry.js` is a faithful port of upstream's English-only stylometry: its phrase table is English and it splits sentences on `[.!?]`. On Chinese text it is meaningless (textbook model Chinese scores "low" with zero hits), so it now reports *not applicable* on CJK-dominant input. [`js/zh_style.js`](js/zh_style.js) is the Chinese counterpart. It is a **repo-owned heuristic, not an upstream port**, so it has no parity test and no upstream anchor. It looks for stock transitions, scene-setting openers, summarising and aphoristic closers, inflated vocabulary, "not X but Y" reframes, first/second/finally scaffolding and uniform sentence length, in both Traditional and Simplified text. Like stylometry it is capped at *uncertain*.
+
+Calibration, stated as measured:
+
+- Tuning set: 24 model-written zh-TW articles against 23 pre-2022 zh.wikipedia excerpts, AUC 0.986.
+- Held-out: 16 shorter model-written blog, news and product texts (half of them prompted to avoid AI phrasing) against the same human set, AUC 0.745.
+- The highest human score was 0.19 and the threshold is 0.35, so there were 0 human false positives, but recall is low on short or deliberately plain text.
+- Short paragraphs: density is divided by at least 500 characters, otherwise a single structural hit (uniform sentence length, say) carries a 150-character paragraph over the threshold. On the same human set cut into 49 excerpts of 150 to 300 characters: 1 false positive (max 0.53) without the floor, 0 (max 0.22) with it; full-length documents score the same.
+
+Conclusion: use it as a rewrite meter, not a verdict.
 
 ### Keyed-Gumbel (EXP), in the browser
 
@@ -189,6 +210,7 @@ There is no `package.json` here, because nothing at runtime or in the test suite
 - `js/pyre.js`: Python `re` and `str` semantics (`\w`, `\b`, `\s`, `\d`, `.`, `str.strip`, `str.splitlines`, `IGNORECASE`) for the ports that have to match CPython exactly rather than approximately
 - `js/container_meta.js`: port of the text-markup half of `container_meta.py` (SVG, HTML and Markdown frontmatter inspect + strip, embedded `data:image/...` URIs routed back through the image strippers, the shared generator-name vocabulary). The ZIP and PDF halves of that file are not ported and have no browser counterpart.
 - `js/stylometry.js`: port of `score_stylometry.py` (burstiness / MATTR / AI-phrase density; heuristic, not a watermark detector)
+- `js/zh_style.js`: repo-owned Chinese AI-cadence heuristic (not an upstream port; see the zh-style section above)
 - `js/gumbel.js`: port of `detect_gumbel.py` (keyed-Gumbel / EXP same-key replay, with its own synchronous SHA-256 and HMAC so it needs neither `crypto.subtle` nor a secure context)
 - `js/engine.js`, `js/engine_ops.js`, `js/worker.js`: the engine work runs in a Web Worker when the browser allows one. `engine_ops.js` holds the op table with no DOM in it and is loaded by both sides, so the worker path and the same-thread path run the same code rather than two copies of it. The engines are not in the page's script tags at all: the worker loads its own copy, so the main thread never fetches or compiles them. A page opened straight off the filesystem cannot start a worker: `engine.js` then loads them into the page itself and calls the same table in place, and callers cannot tell the difference.
 - `js/detectors.js`: the Inspector's detector registry: one result contract for the character, metadata and statistical layers, plus `summarize()` / `compare()` for the Overall box and the before/after view
