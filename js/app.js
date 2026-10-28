@@ -157,7 +157,7 @@
    * /llm, so no key ever lives in the browser and the hosted HTTPS build — which
    * cannot reach a plain-HTTP local endpoint anyway — simply never shows it. */
   const REWRITE_KEY = "unmark-web.rewrite";
-  const rewrite = { enabled: false, busy: false, ctrl: null, customPrompt: null };
+  const rewrite = { enabled: false, busy: false, ctrl: null, customPrompt: null, timeoutMs: 305000 };
 
   function saveRewritePrefs() {
     try {
@@ -190,7 +190,7 @@
     rewrite.ctrl = new AbortController();
     setRewriteBusy(true);
     try {
-      const res = await WmApi.llmRewrite($("rewrite-prompt").value, text, $("rewrite-model").value.trim(), rewrite.ctrl.signal);
+      const res = await WmApi.llmRewrite($("rewrite-prompt").value, text, $("rewrite-model").value.trim(), rewrite.ctrl.signal, rewrite.timeoutMs);
       // The user may have kept typing; a reply that no longer matches what is on
       // screen is dropped rather than shown against the wrong source text.
       if (outputEl.textContent !== text) { out.textContent = ""; return; }
@@ -212,6 +212,8 @@
     let cfg = null;
     try { cfg = await WmApi.llmConfig(); } catch (_) { /* not served locally, or no proxy */ }
     rewrite.enabled = !!(cfg && cfg.enabled);
+    // client waits a bit longer than the server so its 502 arrives first
+    if (cfg && Number.isFinite(cfg.timeout) && cfg.timeout > 0) rewrite.timeoutMs = cfg.timeout * 1000 + 5000;
     $("rewrite-box").hidden = !rewrite.enabled;
     $("rewrite-hint").hidden = rewrite.enabled;
     if (!rewrite.enabled) return;

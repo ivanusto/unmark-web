@@ -81,6 +81,7 @@ python3 serve_local.py \
   --llm-api-key "$YOUR_KEY"
 
 # equivalently: UNMARK_LLM_URL / UNMARK_LLM_MODEL / UNMARK_LLM_API_KEY
+# (also UNMARK_HOST / UNMARK_ALLOW / UNMARK_LLM_EXTRA / UNMARK_LLM_TIMEOUT)
 ```
 
 A *Rewrite* panel then appears under the cleaned text, with an editable instruction prompt. It sends `POST /llm/v1/chat/completions` **same-origin**, so the key never enters the browser and the watermarks service's own bearer token is never attached to it.
@@ -91,6 +92,22 @@ Three things worth being explicit about:
 - **The hosted build cannot offer it.** [The demo](https://ivanusto.github.io/unmark-web/) is HTTPS, and browsers block an HTTPS page from calling a plain-HTTP local endpoint. This is a `serve_local.py` feature by construction, not an oversight.
 - **Cleaning stays offline; rewriting does not.** Text you rewrite is sent to the endpoint you configured. Everything on the *Text* and *Files* tabs is still processed in the page unless you connect a server.
 
+### LAN deployment
+
+By default `serve_local.py` listens on `127.0.0.1` only. To share it with other machines on your network:
+
+```bash
+python3 serve_local.py --host 0.0.0.0 --allow <lan-cidr>      # e.g. 192.0.2.0/24
+```
+
+There is **no login**. Anyone `--allow` lets in can spend your LLM endpoint quota and use the statistical-watermark sidecar. Restrict `--allow` to your LAN subnet, and do not port-forward this port to the internet. Without `--allow`, a non-loopback `--host` prints a warning at startup. Loopback is always allowed. Behind Docker bridge networking with the userland proxy, the client address can appear as the bridge gateway, so use host networking if you rely on `--allow`.
+
+Two more options help with shared or reasoning models:
+
+- `--llm-extra '{"chat_template_kwargs":{"enable_thinking":false}}'` is merged into every rewrite request server-side (top-level keys override the browser's; nested objects are merged one level deep). Useful for reasoning models whose thinking tokens some proxies do not forward.
+- `--llm-timeout <seconds>` (default 300) bounds the wait for the LLM endpoint; the page adapts its own timeout to it.
+
+The hosted GitHub Pages build still cannot use any of this.
 
 ## Watermark Inspector
 

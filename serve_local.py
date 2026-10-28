@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve this web UI on loopback and proxy to local services — so the browser
+"""Serve this web UI and proxy to local services — so the browser
 talks same-origin and no CORS changes are needed.
 
     /api/*  -> a running watermarks-remover server.py
@@ -10,6 +10,7 @@ talks same-origin and no CORS changes are needed.
     python3 serve_local.py --upstream http://127.0.0.1:8765 --api-key "$KEY"
     python3 serve_local.py --llm-upstream http://<your-llm-host>:<port> --llm-model <model>
     python3 serve_local.py --stat-upstream http://127.0.0.1:8767   # KGW / SynthID-Text sidecar
+    python3 serve_local.py --host 0.0.0.0 --allow <lan-cidr>      # share on a LAN (no login!)
 
 The rewrite proxy is off unless --llm-upstream (or UNMARK_LLM_URL) is set; with
 it unset, /llm/* answers 404 and the UI hides the rewrite panel entirely. The
@@ -18,13 +19,20 @@ goes for /stat/* and --stat-upstream (UNMARK_STAT_URL): off by default, key
 (--stat-api-key / UNMARK_STAT_API_KEY) stays server-side, /stat-config only says
 whether it is enabled.
 
-Stdlib only. Binds 127.0.0.1 only. Static files are served from this directory
+Binds 127.0.0.1 by default. --host (UNMARK_HOST) opens it to a LAN; there is no
+login, so pair it with --allow (UNMARK_ALLOW, comma-separated CIDRs / IPs):
+anyone allowed can use the configured LLM and sidecar keys. Loopback is always
+allowed. --llm-extra (UNMARK_LLM_EXTRA, a JSON object) is merged into every
+/llm/v1/chat/completions body server-side; --llm-timeout (UNMARK_LLM_TIMEOUT).
+
+Stdlib only. Static files are served from this directory
 with an allow-list (index.html, favicon.svg, css/, js/) — no directory listing,
 no path traversal.
 """
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import mimetypes
 import os
@@ -56,6 +64,40 @@ STAT_API_KEY = ""
 FILE_TIMEOUT = 600  # file cleaning can be slow on big inputs
 LLM_TIMEOUT = 300
 STAT_TIMEOUT = 300  # first call loads an 8 GB model; generation of 1k tokens takes a while
+LLM_EXTRA: dict = {}  # merged into /llm chat bodies server-side
+ALLOW: list = []  # ip_network objects; empty = no restriction
+LLM_CHAT_PATH = "/llm/v1/chat/completions"
+
+
+def _client_allowed(ip: str) -> bool:
+    """Loopback is always allowed; otherwise ip must be in ALLOW (empty = anyone)."""
+    try:
+        addr = ipaddress.ip_address(ip.split("%")[0])
+    except ValueError:
+        return False
+    if addr.version == 6 and addr.ipv4_mapped:
+        addr = addr.ipv4_mapped
+    if addr.is_loopback or not ALLOW:
+        return True
+    return any(addr.version == n.version and addr in n for n in ALLOW)
+
+
+def _merge_extra(body: bytes, extra: dict) -> bytes:
+    """Overlay extra onto a JSON chat body; dict values shallow-merge. Non-JSON passes through."""
+    if not extra:
+        return body
+    try:
+        obj = json.loads(body)
+    except ValueError:
+        return body
+    if not isinstance(obj, dict):
+        return body
+    for k, v in extra.items():
+        if isinstance(v, dict) and isinstance(obj.get(k), dict):
+            obj[k] = {**obj[k], **v}
+        else:
+            obj[k] = v
+    return json.dumps(obj).encode()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -63,6 +105,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt: str, *args: object) -> None:  # quieter, no client IPs in logs
         sys.stderr.write("%s\n" % (fmt % args))
+
+    def _deny(self) -> bool:
+        if _client_allowed(self.client_address[0]):
+            return False
+        self._send(HTTPStatus.FORBIDDEN, b"forbidden", "text/plain; charset=utf-8")
+        return True
 
     def _send(self, status: int, body: bytes, ctype: str, extra: dict[str, str] | None = None) -> None:
         self.send_response(status)
@@ -108,6 +156,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, b'{"ok":false,"error":"body too large"}', "application/json")
                 return
             body = self.rfile.read(int(raw))
+            if path == LLM_CHAT_PATH:
+                body = _merge_extra(body, LLM_EXTRA)
         headers = {"Content-Type": self.headers.get("Content-Type", "application/json")}
         # /api lets the page supply its own bearer token; /llm and /stat never
         # do — their keys are configured here so they stay out of the browser
@@ -133,7 +183,7 @@ class Handler(BaseHTTPRequestHandler):
 
         Deliberately does not echo the upstream URL or the key.
         """
-        payload = {"ok": True, "enabled": bool(LLM_UPSTREAM), "model": LLM_MODEL}
+        payload = {"ok": True, "enabled": bool(LLM_UPSTREAM), "model": LLM_MODEL, "timeout": LLM_TIMEOUT}
         self._send(HTTPStatus.OK, json.dumps(payload).encode(), "application/json")
 
     def _stat_config(self) -> None:
@@ -142,6 +192,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.OK, json.dumps(payload).encode(), "application/json")
 
     def do_GET(self) -> None:  # noqa: N802
+        if self._deny():
+            return
         path = urlparse(self.path).path
         if path == "/llm-config":
             self._llm_config()
@@ -158,6 +210,8 @@ class Handler(BaseHTTPRequestHandler):
     do_HEAD = do_GET
 
     def do_POST(self) -> None:  # noqa: N802
+        if self._deny():
+            return
         path = urlparse(self.path).path
         route = self._route(path)
         if route:
@@ -166,9 +220,40 @@ class Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain; charset=utf-8")
 
 
-def main() -> int:
-    global UPSTREAM, API_KEY, LLM_UPSTREAM, LLM_API_KEY, LLM_MODEL, STAT_UPSTREAM, STAT_API_KEY
+def _allow_list(v: str) -> list:
+    try:
+        return [ipaddress.ip_network(x.strip(), strict=False) for x in v.split(",") if x.strip()]
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"invalid CIDR / IP in --allow: {e}")
+
+
+def _json_object(v: str) -> dict:
+    if not v.strip():
+        return {}
+    try:
+        d = json.loads(v)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"--llm-extra is not valid JSON: {e}")
+    if not isinstance(d, dict):
+        raise argparse.ArgumentTypeError("--llm-extra must be a JSON object")
+    return d
+
+
+def _is_loopback_host(h: str) -> bool:
+    if h == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return False
+
+
+def parse_args(argv: list | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--host", default=os.environ.get("UNMARK_HOST", "127.0.0.1"),
+                   help="bind address (default 127.0.0.1; use with --allow when not loopback)")
+    p.add_argument("--allow", type=_allow_list, default=os.environ.get("UNMARK_ALLOW", ""),
+                   help="comma-separated CIDRs / IPs allowed to connect; empty = no restriction; loopback always allowed")
     p.add_argument("--port", type=int, default=int(os.environ.get("WMWEB_PORT", "8766")))
     p.add_argument("--upstream", default=os.environ.get("WATERMARKS_SERVICE_URL", UPSTREAM))
     p.add_argument("--api-key", default=os.environ.get("WATERMARKS_SERVER_API_KEY", ""))
@@ -176,15 +261,29 @@ def main() -> int:
                    help="OpenAI-compatible base URL for the optional AI rewrite, without the /v1 suffix")
     p.add_argument("--llm-api-key", default=os.environ.get("UNMARK_LLM_API_KEY", ""))
     p.add_argument("--llm-model", default=os.environ.get("UNMARK_LLM_MODEL", ""))
+    p.add_argument("--llm-extra", type=_json_object, default=os.environ.get("UNMARK_LLM_EXTRA", ""),
+                   help='JSON object merged into every chat request, e.g. \'{"chat_template_kwargs":{"enable_thinking":false}}\'')
+    p.add_argument("--llm-timeout", type=int, default=int(os.environ.get("UNMARK_LLM_TIMEOUT", "300")),
+                   help="seconds to wait for the LLM endpoint (default 300)")
     p.add_argument("--stat-upstream", default=os.environ.get("UNMARK_STAT_URL", ""),
                    help="base URL of sidecar/unmark_stat.py, e.g. http://127.0.0.1:8767 (KGW / SynthID-Text)")
     p.add_argument("--stat-api-key", default=os.environ.get("UNMARK_STAT_API_KEY", ""))
-    a = p.parse_args()
+    return p.parse_args(argv)  # type= also converts the env-var string defaults
+
+
+def main() -> int:
+    global UPSTREAM, API_KEY, LLM_UPSTREAM, LLM_API_KEY, LLM_MODEL, STAT_UPSTREAM, STAT_API_KEY
+    global LLM_TIMEOUT, LLM_EXTRA, ALLOW
+    a = parse_args()
+    ALLOW, LLM_EXTRA, LLM_TIMEOUT = a.allow, a.llm_extra, a.llm_timeout
     UPSTREAM, API_KEY = a.upstream.rstrip("/"), a.api_key
     LLM_UPSTREAM, LLM_API_KEY, LLM_MODEL = a.llm_upstream.rstrip("/"), a.llm_api_key, a.llm_model
     STAT_UPSTREAM, STAT_API_KEY = a.stat_upstream.rstrip("/"), a.stat_api_key
-    srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
-    print(f"web UI: http://127.0.0.1:{a.port}/  (proxying /api -> {UPSTREAM})", file=sys.stderr)
+    if not _is_loopback_host(a.host) and not ALLOW:
+        print("WARNING: listening on a non-loopback address with no --allow: anyone who can reach this port "
+              "can use the configured LLM / sidecar keys. Set --allow <lan-cidr>.", file=sys.stderr)
+    srv = ThreadingHTTPServer((a.host, a.port), Handler)
+    print(f"web UI: http://{a.host}:{a.port}/  (proxying /api -> {UPSTREAM})", file=sys.stderr)
     print(f"AI rewrite: {'/llm -> ' + LLM_UPSTREAM if LLM_UPSTREAM else 'disabled (--llm-upstream unset)'}", file=sys.stderr)
     print(f"stat watermarks: {'/stat -> ' + STAT_UPSTREAM if STAT_UPSTREAM else 'disabled (--stat-upstream unset)'}", file=sys.stderr)
     try:
