@@ -188,6 +188,16 @@
   }
 
   // ------------------------------------------------------------ statistical layer
+  /* Same rule as ZhStyle.applies (js/zh_style.js), which lives in the engine
+   * and is not on this thread: at least 20 ideographs and at least 30% of the
+   * letters-and-ideographs. */
+  function looksChinese(text) {
+    const s = String(text || "");
+    const cjk = (s.match(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g) || []).length;
+    const latin = (s.match(/[A-Za-z]/g) || []).length;
+    return cjk >= 20 && cjk / (cjk + latin) >= 0.3;
+  }
+
   // Stylometry: an in-browser *heuristic* (upstream score_stylometry.py). It is
   // deliberately capped at "uncertain" — cadence and phrase density are not a
   // watermark, and the UI says so on the row.
@@ -196,6 +206,11 @@
     applies: isText,
     async run(input) {
       const def = byId("stylometry");
+      /* The phrase table and sentence splitter are English-only, so on Chinese
+       * the answer would be a confident "low" that means nothing. Say so, and
+       * leave the verdict to the zh-style row. meta.visible keeps the row on
+       * screen (not_applicable rows are normally hidden) so the note is read. */
+      if (looksChinese(input.text)) return result(def, { status: "not_applicable", noteKey: "inspect.noteStylometryEnglishOnly", meta: { visible: true } });
       /* The engine is not on this thread, so "can it run here" is answered by
        * asking it rather than by looking for its global. */
       let scored;
@@ -231,6 +246,44 @@
           word_count: rep.word_count, sentence_count: rep.sentence_count,
           confidence_level: rep.confidence_level, density_tier: rep.density_tier, status: rep.status,
         },
+      });
+    },
+  });
+
+  /* Chinese counterpart of the stylometry row: js/zh_style.js, a heuristic
+   * owned by this repo (not an upstream port). Same ceiling as stylometry. */
+  register({
+    id: "zh-style", layer: "statistical", heuristic: true,
+    applies: isText,
+    async run(input) {
+      const def = byId("zh-style");
+      let scored;
+      try {
+        scored = await root.Engine.call("zhStyleScore", { text: input.text });
+      } catch (_) {
+        return result(def, { status: "unavailable", noteKey: "inspect.noteNoStylometry" });
+      }
+      const rep = scored.report;
+      if (rep.status === "not_applicable") {
+        return result(def, { status: "not_applicable", noteKey: "inspect.noteZhStyleNotChinese" });
+      }
+      const evidence = [];
+      if (rep.density != null) evidence.push({ label: "density", detail: String(rep.density) });
+      if (rep.tier) evidence.push({ label: "tier", detail: String(rep.tier) });
+      if (rep.sentence_cv != null) evidence.push({ label: "sentence_cv", detail: String(rep.sentence_cv) });
+      for (const m of rep.matched || []) {
+        evidence.push({ label: "marker", detail: `${m.label} ×${m.count} (w=${m.weight}): ${(m.examples || []).join(" / ")}` });
+      }
+      for (const s of rep.structure || []) evidence.push({ label: "structure", detail: `${s.label} (w=${s.weight})` });
+      const threshold = scored.defaultThreshold != null ? scored.defaultThreshold : null;
+      const meta = { cjk_chars: rep.cjk_chars, sentence_count: rep.sentence_count, density_tier: rep.tier, status: rep.status };
+      if (rep.status === "insufficient_length") {
+        return result(def, { status: "not_tested", score: null, threshold, evidence, noteKey: "inspect.noteUncalibrated", meta });
+      }
+      const flagged = threshold != null && typeof rep.score === "number" && rep.score >= threshold;
+      return result(def, {
+        status: flagged ? "uncertain" : "clean", score: rep.score, threshold,
+        evidence, noteKey: "inspect.noteZhStyle", meta,
       });
     },
   });
@@ -376,7 +429,10 @@
       statistical: has(real, "detected") ? "detected" : has(real, "uncertain") ? "uncertain"
         : real.some((r) => r.status === "clean") ? "clean"
         : real.every((r) => r.status === "not_applicable") ? "not_applicable" : "unavailable",
-      heuristic: st.filter((r) => r.heuristic).map((r) => r.status)[0] || null,
+      /* The English and Chinese heuristics are mutually exclusive on any one
+       * text: report the one that actually ran. */
+      heuristic: (st.filter((r) => r.heuristic && r.status !== "not_applicable")[0]
+        || st.filter((r) => r.heuristic)[0] || { status: null }).status,
     };
   }
 

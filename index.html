@@ -148,6 +148,14 @@
               <textarea id="rewrite-prompt" rows="4" spellcheck="false"></textarea>
             </details>
             <div class="rewrite-controls mt-14">
+              <label for="rewrite-mode" data-i18n="rewriteModeLabel">Rewrite strength</label>
+              <select id="rewrite-mode">
+                <option value="light" data-i18n="rewriteModeLight">Light</option>
+                <option value="deep" data-i18n="rewriteModeDeep" selected>Deep</option>
+              </select>
+              <label class="checkbox-label"><input type="checkbox" id="rewrite-recheck" checked /><span data-i18n="rewriteRecheckLabel">Re-check for leftover AI phrasing</span></label>
+            </div>
+            <div class="rewrite-controls mt-14">
               <label for="rewrite-model" data-i18n="rewriteModelLabel">Model</label>
               <input id="rewrite-model" type="text" spellcheck="false" autocomplete="off" list="rewrite-model-list" />
               <datalist id="rewrite-model-list"></datalist>
@@ -157,6 +165,7 @@
             <div class="textarea-wrapper mt-14">
               <div class="output-preview compact" id="rewrite-output" tabindex="0" aria-live="polite" aria-labelledby="lbl-rewrite-header"></div>
             </div>
+            <p class="footnote mt-14" id="rewrite-meter" hidden></p>
             <div class="actions-bar mt-14">
               <button class="btn btn-secondary" id="btn-copy-rewrite" type="button"><span aria-hidden="true">📋</span><span data-i18n="btnCopyRewrite">Copy rewritten text</span></button>
             </div>

@@ -28,7 +28,7 @@
    * engine_ops last because it captures the rest as it runs. */
   const ENGINE_SCRIPTS = [
     "pyre.js", "layer_a.js", "image_meta.js", "av_meta.js",
-    "container_meta.js", "stylometry.js", "gumbel.js", "engine_ops.js",
+    "container_meta.js", "stylometry.js", "zh_style.js", "gumbel.js", "engine_ops.js",
   ];
 
   let worker = null;

@@ -14,6 +14,7 @@ importScripts(
   "av_meta.js",
   "container_meta.js",
   "stylometry.js",
+  "zh_style.js",
   "gumbel.js",
   "engine_ops.js"
 );
