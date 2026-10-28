@@ -76,6 +76,7 @@ python3 serve_local.py \
   --llm-api-key "$YOUR_KEY"
 
 # 也可以用環境變數：UNMARK_LLM_URL / UNMARK_LLM_MODEL / UNMARK_LLM_API_KEY
+# （另有 UNMARK_HOST / UNMARK_ALLOW / UNMARK_LLM_EXTRA / UNMARK_LLM_TIMEOUT）
 ```
 
 清洗結果下方會出現「AI 改寫」面板，附一個可編輯的指示 prompt。它以**同源**方式送出 `POST /llm/v1/chat/completions`，所以金鑰不會進到瀏覽器，watermarks 服務自己的 bearer token 也不會被一起帶上。
@@ -86,6 +87,22 @@ python3 serve_local.py \
 - **線上版做不到這件事。** [Demo 站](https://ivanusto.github.io/unmark-web/)是 HTTPS，而瀏覽器會擋掉 HTTPS 頁面呼叫純 HTTP 的本機端點。這是 `serve_local.py` 專屬的功能，並非疏漏。
 - **清洗仍然離線，改寫則否。** 送去改寫的文字會離開這台裝置，抵達你設定的端點。「文字」與「檔案」分頁的處理則照舊留在頁面內，除非你另外連了伺服器。
 
+### 區域網路部署
+
+`serve_local.py` 預設只監聽 `127.0.0.1`。若要提供給同一網路內的其他電腦使用：
+
+```bash
+python3 serve_local.py --host 0.0.0.0 --allow <lan-cidr>      # 例如 192.0.2.0/24
+```
+
+本服務**沒有登入機制**。凡是 `--allow` 放行的來源，都能消耗你的 LLM 端點額度，也能使用統計浮水印 sidecar。請將 `--allow` 限縮在你的區域網路網段，且不要對外做連接埠轉發。若 `--host` 不是 loopback 又未設定 `--allow`，啟動時會在 stderr 顯示警告。loopback 一律放行。在 Docker bridge 網路搭配 userland proxy 時，用戶端位址可能顯示為 bridge 閘道，因此要依賴 `--allow` 時請改用 host 網路。
+
+另有兩個選項，適合多人共用或推理型模型：
+
+- `--llm-extra '{"chat_template_kwargs":{"enable_thinking":false}}'` 會在伺服器端併入每個改寫請求（頂層鍵覆蓋瀏覽器送出的值，巢狀物件則合併一層）。適用於部分代理不轉送思考 token 的推理型模型。
+- `--llm-timeout <秒數>`（預設 300）設定等待 LLM 端點的上限；頁面會依此調整自己的逾時。
+
+GitHub Pages 線上版仍然無法使用以上功能。
 
 ## 檢測器（Watermark Inspector）
 

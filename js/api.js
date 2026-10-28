@@ -137,12 +137,12 @@
      * same-origin and never carry the watermarks service's API key. */
     llmConfig: () => request("GET", "/llm-config", null, { base: "", auth: false, timeoutMs: 3000 }),
     llmModels: () => request("GET", "/v1/models", null, { base: "/llm", auth: false, timeoutMs: 5000 }),
-    llmRewrite: (systemPrompt, text, model, signal) => request("POST", "/v1/chat/completions", {
+    llmRewrite: (systemPrompt, text, model, signal, timeoutMs) => request("POST", "/v1/chat/completions", {
       model,
       messages: [{ role: "system", content: systemPrompt }, { role: "user", content: text }],
       stream: false,
       temperature: 0.3,
-    }, { base: "/llm", auth: false, timeoutMs: 300000, signal }),
+    }, { base: "/llm", auth: false, timeoutMs: timeoutMs || 300000, signal }),
 
     /* Optional statistical-watermark sidecar (sidecar/unmark_stat.py): real
      * KGW / SynthID-Text detection and demo generation. Again serve_local.py
