@@ -873,8 +873,13 @@
 
   // ---- HTML ---------------------------------------------------------------
 
-  const META_TAG_RE = compilePy("<meta\\b[^>]*>", true);
-  const META_ATTR_RE = compilePy("(name|property|content|generator)\\s*=\\s*([\"'])((?:(?!\\2).)*)\\2", true);
+  // Quote-aware on purpose (upstream #401): the body skips over quoted attribute
+  // values, so a '>' inside a quoted `content` neither truncates the tag nor
+  // leaves the rest of the attribute behind as stray text.
+  const META_TAG_RE = compilePy("<meta\\b(?:\"[^\"]*\"|'[^']*'|[^>\"'])*>", true);
+  // Names read from a <meta> tag. Matched as a substring, with no word boundary,
+  // so filename="x" still yields name=x (upstream #407: single forward scan).
+  const META_ATTR_NAMES = ["name", "property", "content", "generator"];
 
   // Known AI vendor names for the "generator" meta tag. A plain CMS generator
   // (WordPress, Elementor) is CMS provenance, not AI-generator metadata.
@@ -885,16 +890,36 @@
    * The name/property/content/generator values of a tag, keyed lower-case,
    * values as written, a later attribute winning over an earlier one.
    *
-   * The value capture is quote-aware (upstream #373): a `[^"']*` body stopped
-   * at the *other* quote character, so `content="Bob's C2PA manifest"` parsed
-   * as "Bob" and the free-prose scan never saw the marker that was there. An
-   * unquoted value is not read at all, which leaves the whole-tag scan to
-   * decide that case.
+   * The value read is quote-aware (upstream #373): it runs to its own closing
+   * quote, so `content="Bob's C2PA manifest"` is not cut at the apostrophe. An
+   * unquoted value, or a quote with no closer, is not read at all, which leaves
+   * the whole-tag scan to decide that case. A failed attempt resumes one
+   * character later, as a global regex match did.
    */
   function metaAttrs(tag) {
     const out = {};
-    META_ATTR_RE.lastIndex = 0;
-    for (const m of tag.matchAll(META_ATTR_RE)) out[m[1].toLowerCase()] = m[3];
+    const n = tag.length;
+    let i = 0;
+    while (i < n) {
+      let name = null;
+      for (const candidate of META_ATTR_NAMES) {
+        const end = i + candidate.length;
+        if (end <= n && tag.slice(i, end).toLowerCase() === candidate) { name = candidate; break; }
+      }
+      if (name === null) { i += 1; continue; }
+      let j = i + name.length;
+      while (j < n && pyIsSpace(tag[j])) j += 1;
+      if (j >= n || tag[j] !== "=") { i += 1; continue; }
+      j += 1;
+      while (j < n && pyIsSpace(tag[j])) j += 1;
+      if (j >= n || (tag[j] !== '"' && tag[j] !== "'")) { i += 1; continue; }
+      const quote = tag[j];
+      const valueStart = j + 1;
+      const valueEnd = tag.indexOf(quote, valueStart);
+      if (valueEnd < 0) { i += 1; continue; }
+      out[name] = tag.slice(valueStart, valueEnd);
+      i = valueEnd + 1;
+    }
     return out;
   }
 
@@ -1046,8 +1071,8 @@
   /* Two spellings on purpose, matching upstream: inspect anchors on a word
    * boundary and reports the attribute alone, clean anchors on the preceding
    * whitespace so removing the attribute does not leave a double space. */
-  const DATA_AI_FIND_RE = compilePy("\\bdata-ai[\\w-]*\\s*=\\s*[\"'][^\"']*[\"']", true);
-  const DATA_AI_DROP_RE = compilePy("\\sdata-ai[\\w-]*\\s*=\\s*[\"'][^\"']*[\"']", true);
+  const DATA_AI_FIND_RE = compilePy("\\bdata-ai(?:[-_][\\w-]*)?\\s*=\\s*[\"'][^\"']*[\"']", true);
+  const DATA_AI_DROP_RE = compilePy("\\sdata-ai(?:[-_][\\w-]*)?\\s*=\\s*[\"'][^\"']*[\"']", true);
 
   /** inspect_html(text) -> {hasC2pa, hasAi, findings, details} */
   function inspectHtml(text) {
@@ -1179,6 +1204,31 @@
 
   const afterColon = (line) => (line.includes(":") ? line.slice(line.indexOf(":") + 1) : "");
 
+  /* Value lines that continue a top-level key between two key lines: block
+   * scalars (`key: >` / `key: |`), wrapped plain values and `- item` lists.
+   * The extent is the one the clean path already drops: nested content up to
+   * the next top-level key (or the end of the frontmatter block). */
+  function fmValueContinuation(lines, start, end) {
+    const parts = [];
+    for (const line of lines.slice(start, end)) {
+      const stripped = PyRe.pyStrip(line);
+      if (!stripped || stripped.startsWith("#")) continue;  // belongs to whichever block it sits in
+      if (line[0] === " " || line[0] === "\t" || line[0] === "-") parts.push(stripped);
+    }
+    return parts.join("\n");
+  }
+
+  /** _fm_joined_value(rows, idx, lines): the value of rows[idx] across its continuation lines. */
+  function fmJoinedValue(rows, idx, lines) {
+    const line = rows[idx][1];
+    const i = rows[idx][2];
+    let val = afterColon(line);
+    const end = idx + 1 < rows.length ? rows[idx + 1][2] : lines.length;
+    const cont = fmValueContinuation(lines, i + 1, end);
+    if (cont) val = PyRe.pyStrip(val) ? `${val}\n${cont}` : cont;
+    return val;
+  }
+
   /** inspect_markdown(text) -> {hasC2pa, hasAi, findings, details} */
   function inspectMarkdown(text) {
     const findings = [];
@@ -1188,9 +1238,11 @@
     const m = FM_RE.exec(text);
     if (m) {
       hasFm = true;
+      const blockLines = PyRe.pySplitlines(m[1]);
       const rows = parseSimpleYamlKeys(m[1]);
       const isAgent = isAgentFrontmatter(rows.map(([k]) => k));
-      for (const [key, line] of rows) {
+      for (let idx = 0; idx < rows.length; idx++) {
+        const key = rows[idx][0];
         keys.push(key);
         if (isAgent && AGENT_CONFIG_KEYS.has(key.toLowerCase())) {
           /* agent configuration, not provenance; the value is still checked below */
@@ -1198,7 +1250,8 @@
           hasAi = true;
           findings.push(`frontmatter key: ${key}`);
         }
-        if (namedValueIsAi(key, afterColon(line))) {
+        // the value may span continuation lines, so scan the joined text
+        if (namedValueIsAi(key, fmJoinedValue(rows, idx, blockLines))) {
           hasAi = true;
           findings.push(`frontmatter value hit on ${key}`);
         }
@@ -1232,8 +1285,12 @@
       const body = text.slice(m[0].length);
       const kept = [];
       let dropping = false;  // inside the nested block of a dropped top-level key
-      const isAgent = isAgentFrontmatter(parseSimpleYamlKeys(block).map(([k]) => k));
-      for (const line of PyRe.pySplitlines(block)) {
+      const blockLines = PyRe.pySplitlines(block);
+      const rows = parseSimpleYamlKeys(block);
+      const rowAt = new Map(rows.map(([, , i], n) => [i, n]));
+      const isAgent = isAgentFrontmatter(rows.map(([k]) => k));
+      for (let li = 0; li < blockLines.length; li++) {
+        const line = blockLines[li];
         const stripped = PyRe.pyStrip(line);
         // Blank lines and comments belong to whichever block we are inside.
         if (!stripped || stripped.startsWith("#")) { if (!dropping) kept.push(line); continue; }
@@ -1242,7 +1299,10 @@
         const km = matchStart(FM_KEY_RE, line);
         if (!km) { dropping = false; kept.push(line); continue; }
         const key = km[1];
-        const val = afterColon(line);
+        // Scan the joined text, the same text inspectMarkdown sees, so a phrase
+        // hidden on a continuation line cannot survive.
+        const n = rowAt.get(li);
+        const val = n !== undefined ? fmJoinedValue(rows, n, blockLines) : "";
         if (isAgent && AGENT_CONFIG_KEYS.has(key.toLowerCase())) {
           /* agent configuration; fall through to the value check */
         } else if (AI_FRONTMATTER_KEYS.has(key.toLowerCase()) || search(AI_META_NAME_RE, key)) {

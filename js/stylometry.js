@@ -130,7 +130,7 @@
     "c2patool reports", "c2pa-related manifest", "png chunk c2", "png chunk cabx",
     "png chunk jumb", "png chunk jumd", "jpeg app11 segment", "digital_source_type",
     "digitalsourcetype", "trainedalgorithmicmedia", "compositewithtrainedalgorithmicmedia",
-    "softwareagent",
+    "softwareagent", "web-extension vendor property",
   ];
   const INFORMATIONAL = [
     "cms generator", "customxml parts", "xmp packet present", "unsupported",
@@ -140,6 +140,7 @@
   const PROBABLE = [
     "ai:", "marker:", "meta:", "frontmatter", "json-ld", "attr:", "png ", "jpeg app",
     "exif", "xmp", "interesting", "pdf-structured", "layer-a",
+    "web-extension property", "web-extension reference",
   ];
 
   function classifyFindingConfidence(finding) {

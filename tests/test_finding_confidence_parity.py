@@ -70,6 +70,11 @@ FINDINGS = [
     "not a valid AVIF (no ISOBMFF boxes found)",
     "truncated chunk",
     "bad segment length",
+    # Upstream web-extension findings (OOXML itself is not ported here, the
+    # classification strings are).
+    "word/webextensions/webextension1.xml: web-extension vendor property claude.fileId",
+    "xl/webextensions/webextension1.xml: meta: web-extension property foo",
+    "ppt/webextensions/webextension1.xml: meta: web-extension reference id=bar",
     # likely_false_positive
     "byte-scan C2PA markers: c2pa, C2PA",
     "byte-scan C2PA BMFF content-provenance user type",
