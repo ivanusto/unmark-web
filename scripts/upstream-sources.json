@@ -59,7 +59,7 @@
       "id": "watermarks-remover/service/scripts/common.py",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/common.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/common.py",
-      "sha256": "5cc5976c07f86d6953bdb2082540cbda04f13ff193bad6fed025762e870001ab",
+      "sha256": "d3a173c3c1731fcb8fda5df8230bcffc950eb1dac1785da7a104196ae7df3324",
       "slice": {
         "from": "^def classify_finding_confidence\\("
       },
@@ -67,7 +67,7 @@
         "js/stylometry.js",
         "tests/test_finding_confidence_parity.py"
       ],
-      "comment": "Tracked as one definition, not as a file. classify_finding_confidence is the only thing js/stylometry.js mirrors from common.py, because StylometryReport.to_dict() calls it; the rest of common.py is filesystem and subprocess plumbing with no browser counterpart (read_text_input, backup_path, safe_write_bytes, the tool probes). Hashing the whole file would open a drift issue every time upstream touched any of that, and an issue that is usually noise is an issue nobody reads. Added after upstream #273 changed this function, classifying Layer A space homoglyphs as informational, and nothing here noticed."
+      "comment": "Tracked as one definition, not as a file. classify_finding_confidence is the only thing js/stylometry.js mirrors from common.py, because StylometryReport.to_dict() calls it; the rest of common.py is filesystem and subprocess plumbing with no browser counterpart (read_text_input, backup_path, safe_write_bytes, the tool probes). Hashing the whole file would open a drift issue every time upstream touched any of that, and an issue that is usually noise is an issue nobody reads. Added after upstream #273 changed this function, classifying Layer A space homoglyphs as informational, and nothing here noticed. The web-extension classification strings (\"web-extension vendor property\" as confirmed, \"web-extension property\" and \"web-extension reference\" as probable) are ported verbatim, though this port never produces those findings, since the OOXML web-extension scan (#380, #394) is not ported."
     },
     {
       "id": "watermarks-remover/service/scripts/container_meta.py#ai-vocabulary",
@@ -133,7 +133,7 @@
       "id": "watermarks-remover/service/scripts/container_meta.py#markdown",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/container_meta.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/container_meta.py",
-      "sha256": "fa4275b3086ab7d3fa312c659931fc82eda795bac51d6933eadad52a10d4e20d",
+      "sha256": "d9d999d0fd869f146b1f335e6ae93fe89487cf1ab6c229d35cc863d9f2ae1bb9",
       "slice": {
         "from": "^_FM_RE = re\\.compile",
         "until": "^# LaTeX \\(\\.tex / \\.ltx\\)$"
@@ -142,13 +142,13 @@
         "js/container_meta.js",
         "tests/test_container_meta_parity.py"
       ],
-      "comment": "_FM_RE, _parse_simple_yaml_keys, inspect_markdown and clean_markdown, ported in full. The nested-block rule matters more than it looks: dropping an AI key has to drop the indented lines under it, or `model:` goes and `name: claude-opus` stays. Upstream #345 is ported in full: a frontmatter block carrying name AND description AND (tools OR allowed-tools) is a Claude Code agent or skill definition, recognised by that shape because inspect_container never sees a path, and its model/tools/allowed-tools/name/description keys are configuration rather than provenance. Values are still scanned inside one, so `description: Generated with Claude Code` is still caught and still stripped. This matters because clean_markdown drops the whole key on a value hit, so cleaning such a file used to delete the agent's tool grant and its model while the file still parsed. Upstream records the key/value asymmetry in docs/frontmatter-scanning.md. Upstream #366 is ported in full: inspect_markdown reports, and clean_markdown drops, <!-- --> comments that name an AI tool or say AI-generated, C2PA or content credential, outside fenced code blocks only."
+      "comment": "_FM_RE, _parse_simple_yaml_keys, inspect_markdown and clean_markdown, ported in full. The nested-block rule matters more than it looks: dropping an AI key has to drop the indented lines under it, or `model:` goes and `name: claude-opus` stays. Upstream #345 is ported in full: a frontmatter block carrying name AND description AND (tools OR allowed-tools) is a Claude Code agent or skill definition, recognised by that shape because inspect_container never sees a path, and its model/tools/allowed-tools/name/description keys are configuration rather than provenance. Values are still scanned inside one, so `description: Generated with Claude Code` is still caught and still stripped. This matters because clean_markdown drops the whole key on a value hit, so cleaning such a file used to delete the agent's tool grant and its model while the file still parsed. Upstream records the key/value asymmetry in docs/frontmatter-scanning.md. Upstream #366 is ported in full: inspect_markdown reports, and clean_markdown drops, <!-- --> comments that name an AI tool or say AI-generated, C2PA or content credential, outside fenced code blocks only. Upstream #402 is ported in full: a value that continues past its key line (a `key: >` or `key: |` block scalar, a wrapped plain value, a `- item` list) is scanned as one joined text by inspect_markdown and clean_markdown through _fm_value_continuation and _fm_joined_value, so a phrase that sits only on a continuation line is found and the whole key is dropped."
     },
     {
       "id": "watermarks-remover/service/scripts/container_meta.py#html",
       "url": "https://raw.githubusercontent.com/guillaumemeyer/watermarks-remover/main/service/scripts/container_meta.py",
       "history": "https://github.com/guillaumemeyer/watermarks-remover/commits/main/service/scripts/container_meta.py",
-      "sha256": "c4cc3a1d2b3bfbd6663998f9329e81c5b3071330e3988ee7bd37b5a41d57a817",
+      "sha256": "4e6c1910dc249183fe78d47ac1f91b421cb669c2797ec491bf161fb6f9508c46",
       "slice": {
         "from": "^_META_TAG_RE = re\\.compile",
         "until": "^# SVG$"
@@ -157,7 +157,7 @@
         "js/container_meta.js",
         "tests/test_container_meta_parity.py"
       ],
-      "comment": "The whole HTML section: _meta_attrs, _is_cms_generator_meta, _meta_tag_is_ai, _find_tag_end, _iter_script_blocks, _script_tag_is_jsonld, inspect_html and clean_html. Ported in full. This used to carry a deliberate divergence: _iter_script_blocks and _iter_data_uris lowercased the whole document to find '<script' and 'data:image/', then indexed the ORIGINAL string with the result's offsets, and U+0130 lowercases to two characters, so one such character hid a JSON-LD provenance block and mis-parsed an embedded data URI. js/container_meta.js always lowercased ASCII only. Reported as guillaumemeyer/watermarks-remover#354 and fixed upstream by #364 the same way, so the two agree again and tests/test_container_meta_parity.py now asserts agreement on the inputs that used to separate them. Upstream #366 (provenance comments, reported and dropped after the JSON-LD pass) and #373 (quote-aware _META_ATTR_RE and _META_CONTENT_VALUE_RE, so an apostrophe inside a double-quoted content value neither ends it early nor hides a marker behind it) are ported in full."
+      "comment": "The whole HTML section: _meta_attrs, _is_cms_generator_meta, _meta_tag_is_ai, _find_tag_end, _iter_script_blocks, _script_tag_is_jsonld, inspect_html and clean_html. Ported in full. This used to carry a deliberate divergence: _iter_script_blocks and _iter_data_uris lowercased the whole document to find '<script' and 'data:image/', then indexed the ORIGINAL string with the result's offsets, and U+0130 lowercases to two characters, so one such character hid a JSON-LD provenance block and mis-parsed an embedded data URI. js/container_meta.js always lowercased ASCII only. Reported as guillaumemeyer/watermarks-remover#354 and fixed upstream by #364 the same way, so the two agree again and tests/test_container_meta_parity.py now asserts agreement on the inputs that used to separate them. Upstream #366 (provenance comments, reported and dropped after the JSON-LD pass) and #373 (quote-aware _META_ATTR_RE and _META_CONTENT_VALUE_RE, so an apostrophe inside a double-quoted content value neither ends it early nor hides a marker behind it) are ported in full. Upstream #401 (_META_TAG_RE is quote-aware, so a '>' inside a quoted content value no longer truncates the tag), #407 (_meta_attrs is a single forward scan over _META_ATTR_NAMES instead of a backreference regex, with the same substring matching and the same later-attribute-wins rule) and #400 (data-ai attributes match only the bare name or a data-ai-/data-ai_ separator, so data-aid and data-airline are left alone) are ported in full."
     }
   ]
 }
