@@ -119,3 +119,17 @@ def test_key_files_present_and_consistent():
         assert f.is_file(), f
         cfg = json.loads(f.read_text())["config"]
         assert cfg["ngram_len"] == 5 and len(cfg["keys"]) == 30 and cfg["sampling_table_size"] == 65536
+
+
+def test_unified_requires_key_kwarg():
+    r = us.unified("fast-detectgpt", "clean", requires_key=False)
+    assert set(r) == UNIFIED_KEYS
+    assert r["requires_key"] is False
+    assert us.unified("kgw", "clean")["requires_key"] is True
+
+
+def test_engine_health_lists_fast_detectgpt():
+    dets = us.Engine("stub-model", "cpu", False).health()["detectors"]
+    assert [d["id"] for d in dets] == list(us.DETECTOR_IDS)
+    fdg = next(d for d in dets if d["id"] == "fast-detectgpt")
+    assert fdg["requires_key"] is False

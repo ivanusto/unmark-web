@@ -69,9 +69,10 @@ only `{"enabled": true|false}`, with no URL and no key.
 GET  /health
      → {ok, device, model, loaded, generate, detectors:[{id, available, requires_key, requires_model, key_profiles, model, note}]}
 
-POST /detect    {"text": "...", "detectors": ["kgw","synthid-text"], "key_profile": "a"|"b"}
+POST /detect    {"text": "...", "detectors": ["kgw","synthid-text","fast-detectgpt"], "key_profile": "a"|"b"}
      → {ok, results:[{detector, status, confidence, score, threshold, evidence:[{label,detail}], note,
-                       requires_key:true, requires_model:true, local:true, meta:{model, key_profile, tokens, tokens_scored, ...}}]}
+                       requires_key, requires_model:true, local:true, meta:{model, key_profile, tokens, tokens_scored, ...}}]}
+     requires_key is false for fast-detectgpt, which ignores key_profile
      status ∈ clean | detected | uncertain | unavailable | not_tested | error
 
 POST /generate  {"prompt": "...", "scheme": "kgw"|"synthid"|"none", "key_profile": "a"|"b", "max_new_tokens": ≤1024}
@@ -79,7 +80,8 @@ POST /generate  {"prompt": "...", "scheme": "kgw"|"synthid"|"none", "key_profile
 ```
 
 Errors are `{"ok": false, "error": "..."}`. Body cap 2 MiB. One GPU job at a
-time (a global lock); long texts are truncated to 4096 tokens before scoring.
+time (a global lock); long texts are truncated to 4096 tokens before scoring
+(1024 for Fast-DetectGPT).
 
 ### Key profiles
 
@@ -117,6 +119,12 @@ Both schemes are keyed, so the sidecar ships two profiles, `a` and `b`:
   On load, the HF-generated sampling table is compared byte-for-byte with the
   bundle's `sampling-table.int64le`; if it differs (torch's CPU and CUDA RNG
   streams differ), the bundle's table is loaded instead and `meta.table` says so.
+- **Fast-DetectGPT**: score = the analytic criterion with `Qwen3-0.6B-Base`
+  sampling and `Qwen3-0.6B` scoring (both loaded beside the 4B model; about
+  3 GB more). `uncertain` at ≥ 1.9, else `clean`; never `detected`, because
+  it is a heuristic, not a mark. Fewer than 100 tokens → `not_tested`.
+  Calibration and the pair comparison are in the main
+  [README](../README.md#fast-detectgpt-zero-shot-on-the-sidecar).
 
 ## Honest limits: read before trusting a verdict
 
