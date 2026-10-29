@@ -9,13 +9,20 @@ token-level watermark schemes, via Hugging Face transformers:
     synthid-text   SynthID-Text (Dathathri et al., Nature 2024), `SynthIDTextWatermarkingConfig`
                    + `BayesianDetectorModel` + `SynthIDTextWatermarkDetector`
 
+plus one *keyless* zero-shot score that is not a watermark at all:
+
+    fast-detectgpt Bao et al. "Fast-DetectGPT" (ICLR 2024), analytic sampling
+                   discrepancy, Qwen3-0.6B-Base as sampler, Qwen3-0.6B as scorer
+
 Both schemes are *keyed*: detection is only meaningful for text produced by the
 same tokenizer/model family, the same scheme, and the same key. We ship two
 public experiment profiles ("a" and "b") so the demo can show a match and a
 mismatch side by side. A model you do not hold keys for cannot be judged here.
+fast-detectgpt needs no key and works on any model's output, but it is a
+heuristic (how unsurprising the text is to the scoring model), not a mark.
 
     GET  /health
-    POST /detect    {"text": ..., "detectors": ["kgw","synthid-text"], "key_profile": "a"|"b"}
+    POST /detect    {"text": ..., "detectors": ["kgw","synthid-text","fast-detectgpt"], "key_profile": "a"|"b"}
     POST /generate  {"prompt": ..., "scheme": "kgw"|"synthid"|"none", "key_profile": "a"|"b", "max_new_tokens": N}
 
 Runs on 127.0.0.1 only. Needs torch + transformers>=4.57 and (realistically) a
@@ -90,7 +97,22 @@ MAX_BODY = 2 << 20
 MAX_NEW_TOKENS = 1024
 MAX_DETECT_TOKENS = 4096  # longer inputs are truncated before scoring; reported in meta
 
-DETECTOR_IDS = ("kgw", "synthid-text")
+# Fast-DetectGPT: the scorer's log-likelihood of the text minus its
+# expectation under the sampler, over the standard deviation, summed over
+# tokens. The paper's recommended shape is a base model sampling and its
+# instruct sibling scoring; measured on Chinese (README.md), that pair reaches
+# AUC 0.955 while the 4B instruct model alone, scoring itself, sits at 0.54.
+# The 0.6B pair is the one that fits next to the 4B model in 12 GB, and it
+# matches the 1.7B pair at low false-positive rates. FDG_AI sits above every
+# human text in the calibration set (max 1.85).
+FDG_SAMPLER = "Qwen/Qwen3-0.6B-Base"
+FDG_SCORER = "Qwen/Qwen3-0.6B"
+FDG_AI = 1.9
+FDG_MIN_TOKENS = 100
+FDG_MAX_TOKENS = 1024  # calibrated at <= 1024; the criterion keeps growing with length on machine text
+FDG_CHUNK = 256  # positions per lm_head + float32 log-softmax slice; bounds the 151k-vocab temporaries
+
+DETECTOR_IDS = ("kgw", "synthid-text", "fast-detectgpt")
 PROFILES = ("a", "b")
 
 
@@ -115,6 +137,7 @@ class Engine:
         self.tokenizer = None
         self.kgw_detectors: dict[str, object] = {}
         self.synthid: dict[str, dict] = {}
+        self.fdg: tuple | None = None
         self.synthid_keys: dict[str, dict] = {}
         for p in PROFILES:
             f = KEYS_DIR / f"key-{p}.json"
@@ -147,6 +170,17 @@ class Engine:
         self.model.to(dev)
         self.model.eval()
         log(f"model ready in {time.time() - t0:.1f}s")
+
+    def ensure_fdg(self) -> tuple:
+        if self.fdg is None:
+            import torch
+            from transformers import AutoModelForCausalLM
+            dev = self._resolve_device()
+            dtype = torch.bfloat16 if dev != "cpu" else torch.float32
+            log(f"loading Fast-DetectGPT pair {FDG_SAMPLER} -> {FDG_SCORER} on {dev} ...")
+            self.fdg = tuple(AutoModelForCausalLM.from_pretrained(m, dtype=dtype).to(dev).eval()
+                             for m in (FDG_SAMPLER, FDG_SCORER))
+        return self.fdg
 
     def ensure_tokenizer(self) -> None:
         if self.tokenizer is None:
@@ -276,6 +310,10 @@ class Engine:
              "requires_model": True, "key_profiles": sorted(self.synthid_keys), "model": self.model_id,
              "note": "SynthID-Text Bayesian detector trained for " + DEFAULT_MODEL + " on public experiment keys "
                      "(xlr8harder/synthid). Does not detect Gemini or any other vendor's SynthID key."},
+            {"id": "fast-detectgpt", "available": avail, "requires_key": False, "requires_model": True,
+             "key_profiles": [], "model": f"{FDG_SAMPLER} -> {FDG_SCORER}",
+             "note": "Fast-DetectGPT analytic criterion (Bao et al., ICLR 2024). Keyless and model-agnostic, "
+                     "but a heuristic: formal or formulaic human prose can score high."},
         ]
         return {"ok": True, "device": dev, "model": self.model_id, "loaded": self.model is not None,
                 "generate": self.allow_generate, "detectors": dets}
@@ -289,9 +327,12 @@ class Engine:
                         results.append(self._detect_kgw(text, profile))
                     elif d == "synthid-text":
                         results.append(self._detect_synthid(text, profile))
+                    elif d == "fast-detectgpt":
+                        results.append(self._detect_fdg(text))
                 except Exception as e:  # noqa: BLE001
                     log(f"detect {d} failed: {e}\n{traceback.format_exc()}")
                     results.append(unified(d, "error", note=f"{type(e).__name__}: {e}",
+                                           requires_key=d != "fast-detectgpt",
                                            meta={"model": self.model_id, "key_profile": profile}))
         return results
 
@@ -390,6 +431,45 @@ class Engine:
         return unified("synthid-text", status, confidence=posterior, score=posterior, threshold=thr,
                        evidence=evidence, note=note, meta=meta)
 
+    def _detect_fdg(self, text: str) -> dict:
+        import torch
+        sampler, scorer = self.ensure_fdg()
+        ids, truncated = self._encode(text)
+        if ids.shape[1] > FDG_MAX_TOKENS:
+            ids, truncated = ids[:, :FDG_MAX_TOKENS], True
+        n_tokens = int(ids.shape[1])
+        scored = n_tokens - 1
+        meta = {"model": f"{FDG_SAMPLER} -> {FDG_SCORER}", "tokens": n_tokens, "truncated": truncated}
+        if scored < FDG_MIN_TOKENS:
+            return unified("fast-detectgpt", "not_tested", requires_key=False, meta=meta,
+                           note=f"too short: {max(0, scored)} tokens scored, need >= {FDG_MIN_TOKENS}")
+        with torch.no_grad():
+            # Hidden states only, then lm_head a slice at a time: full logits
+            # for two models would not fit beside the 4B model in 12 GB.
+            hq = sampler.model(ids).last_hidden_state[0, :-1]
+            hp = scorer.model(ids).last_hidden_state[0, :-1]
+            target = ids[0, 1:]
+            ll = mu = var = 0.0
+            for s in range(0, scored, FDG_CHUNK):
+                q = torch.softmax(sampler.lm_head(hq[s:s + FDG_CHUNK]).float(), dim=-1)
+                lp = torch.log_softmax(scorer.lm_head(hp[s:s + FDG_CHUNK]).float(), dim=-1)
+                m = (q * lp).sum(-1)
+                ll += float(lp.gather(-1, target[s:s + FDG_CHUNK, None]).sum())
+                mu += float(m.sum())
+                var += float(((q * lp.square()).sum(-1) - m.square()).sum())
+        crit = (ll - mu) / math.sqrt(var) if var > 0 else 0.0
+        meta["tokens_scored"] = scored
+        evidence = [
+            {"label": "criterion", "detail": f"{crit:.2f} (AI-like >= {FDG_AI:g}; human text in calibration <= 1.85)"},
+            {"label": "mean log-likelihood", "detail": f"{ll / scored:.3f}"},
+            {"label": "mean expected log-likelihood", "detail": f"{mu / scored:.3f}"},
+            {"label": "tokens scored", "detail": str(scored) + (f" (first {FDG_MAX_TOKENS})" if truncated else "")},
+        ]
+        # A heuristic, like stylometry: "uncertain" is its ceiling, never "detected".
+        status = "uncertain" if crit >= FDG_AI else "clean"
+        return unified("fast-detectgpt", status, score=crit, threshold=FDG_AI, evidence=evidence,
+                       requires_key=False, meta=meta)
+
     def generate(self, prompt: str, scheme: str, profile: str, max_new_tokens: int) -> dict:
         import torch
         with self.lock:
@@ -447,7 +527,7 @@ class Engine:
 
 def unified(detector: str, status: str, *, confidence: float | None = None, score: float | None = None,
             threshold: float | None = None, evidence: list[dict] | None = None, note: str | None = None,
-            meta: dict | None = None) -> dict:
+            meta: dict | None = None, requires_key: bool = True) -> dict:
     def f(x):
         if x is None:
             return None
@@ -455,7 +535,7 @@ def unified(detector: str, status: str, *, confidence: float | None = None, scor
         return x if math.isfinite(x) else None
     return {"detector": detector, "status": status, "confidence": f(confidence), "score": f(score),
             "threshold": f(threshold), "evidence": evidence or [], "note": note,
-            "requires_key": True, "requires_model": True, "local": True, "meta": meta or {}}
+            "requires_key": requires_key, "requires_model": True, "local": True, "meta": meta or {}}
 
 
 # ---------------------------------------------------------------- http
@@ -597,6 +677,7 @@ def main() -> int:
     ENGINE = Engine(a.model, a.device, not a.no_generate)
     if a.preload:
         ENGINE.ensure_model()
+        ENGINE.ensure_fdg()
         for prof in PROFILES:
             ENGINE.ensure_kgw(prof)
             if prof in ENGINE.synthid_keys:

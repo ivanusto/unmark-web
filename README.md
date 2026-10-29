@@ -92,7 +92,7 @@ The panel has two strengths and an optional recheck loop:
 - **Recheck** (on by default, Chinese text only, at most 2 rounds): the page scores the reply with the zh-style heuristic below, names the sentences that still carry a hit, and asks the model to fix just those. A failed round keeps the last good output.
 - Under the result a one-line meter shows the zh-style score and hit count before and after. It is a yardstick, not a verdict.
 
-Measured on the 24-article model-written zh-TW set: mean score 0.468 (source) -> 0.347 light -> 0.181 deep -> 0.027 deep + recheck. Arabic numerals and Latin names were retained 100%, and the length ratio was 0.92x. Caveat: the recheck targets exactly what the meter measures, so that drop is not independent evidence that the text reads as human-written.
+Measured on the 24-article model-written zh-TW set: mean score 0.468 (source) -> 0.347 light -> 0.181 deep -> 0.027 deep + recheck. Arabic numerals and Latin names were retained 100%, and the length ratio was 0.92x. Caveat: the recheck targets exactly what the meter measures, so that drop is not independent evidence that the text reads as human-written. The independent check, [Fast-DetectGPT](#fast-detectgpt-zero-shot-on-the-sidecar), barely moves.
 
 Three things worth being explicit about:
 
@@ -157,6 +157,24 @@ Calibration, stated as measured:
 
 Conclusion: use it as a rewrite meter, not a verdict.
 
+### Fast-DetectGPT (zero-shot, on the sidecar)
+
+When the [statistical sidecar](#statistical-sidecar-optional-local-only) is running, the Inspector adds a **Fast-DetectGPT** row ([Bao et al., ICLR 2024](https://arxiv.org/abs/2310.05130)), and the rewrite panel shows its before/after score next to the zh-style meter. It needs no key and works on any model's output: it asks how much less surprising the text is to a scorer model than that model's own samples would be (analytic criterion, `Qwen/Qwen3-0.6B-Base` as sampler, `Qwen/Qwen3-0.6B` as scorer, first 1024 tokens). It is still a heuristic, capped at *uncertain*, and formal or formulaic human prose can score high.
+
+Measured on 46 human Chinese texts (23 pre-2022 zh.wikipedia excerpts and 23 news wire articles from October 2026) against 40 model-written zh-TW articles:
+
+| Sampler → scorer | AUC |
+|---|---|
+| `Qwen3-4B-Instruct-2507` → itself (the sidecar's own model) | 0.54 |
+| `Qwen3-0.6B` → itself | 0.75 |
+| `Qwen3-0.6B-Base` → itself | 0.85 |
+| **`Qwen3-0.6B-Base` → `Qwen3-0.6B`** (shipped) | **0.955** |
+| `Qwen3-1.7B-Base` → `Qwen3-1.7B` | 0.955 |
+
+An instruct model scoring itself is close to chance, which is why the sidecar loads a separate base/instruct pair rather than reusing its 4B model. The 0.6B pair is the one that fits beside the 4B model on a 12 GB card, and the 1.7B pair was no better at low false-positive rates. The threshold, 1.9, sits above every human text in the set (max 1.85): 0/46 human false positives, 29/40 model-written texts flagged.
+
+What it says about the rewrite: flagged 29/40 before, 28/40 after a deep rewrite and 26/40 after deep + recheck; the median criterion went from 2.18 to 2.29. A rewrite by an LLM removes the phrasing the zh-style meter looks for, but the text stays just as predictable to a language model.
+
 ### Keyed-Gumbel (EXP), in the browser
 
 The one statistical detector that needs no sidecar, no model weights and no network: a port of upstream's `detect_gumbel.py` into [`js/gumbel.js`](js/gumbel.js), with its own SHA-256 and HMAC so it runs synchronously and works from `file://` as well as from the hosted page. Open **Keyed-Gumbel (EXP) key** on the Inspector tab and paste the key the text was generated with (a passphrase, or `0x…` for raw bytes). The key is held in the page for the length of the run: it is never stored, never sent anywhere, and never written into the JSON report.
@@ -173,7 +191,7 @@ The default context window is 4 tokens and the default verdict threshold is `p <
 
 ### Statistical sidecar (optional, local only)
 
-[`sidecar/unmark_stat.py`](sidecar/README.md) is a small Python service (PyTorch + 🤗 Transformers, GPU recommended) that scores text with the reference Kirchenbauer and SynthID-Text detectors from `transformers`, using **public experiment keys** and the independently trained SynthID Bayesian detectors from [`xlr8harder/synthid`](https://github.com/xlr8harder/synthid) (MIT) for `Qwen/Qwen3-4B-Instruct-2507`. It can also *generate* a watermarked sample with a chosen key, so you can run the demonstration end to end:
+[`sidecar/unmark_stat.py`](sidecar/README.md) is a small Python service (PyTorch + 🤗 Transformers, GPU recommended) that scores text with the reference Kirchenbauer and SynthID-Text detectors from `transformers`, using **public experiment keys** and the independently trained SynthID Bayesian detectors from [`xlr8harder/synthid`](https://github.com/xlr8harder/synthid) (MIT) for `Qwen/Qwen3-4B-Instruct-2507`. It can also *generate* a watermarked sample with a chosen key, so you can run the demonstration end to end. It also hosts the keyless [Fast-DetectGPT](#fast-detectgpt-zero-shot-on-the-sidecar) row:
 
 ```bash
 # terminal 1: the sidecar (first run downloads the model and detector bundles)

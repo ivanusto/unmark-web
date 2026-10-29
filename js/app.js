@@ -184,24 +184,39 @@
 
   const zhHits = (rep) => (rep.matched || []).reduce((a, m) => a + m.count, 0) + (rep.structure || []).length;
 
-  /* Before/after readout of the Chinese heuristic. Shown only when both sides
-   * were long enough to score; anything else would be a number without meaning. */
+  /* Before/after readout of the Chinese heuristic, plus Fast-DetectGPT when the
+   * sidecar has it. Each half is shown only when both sides could be scored;
+   * anything else would be a number without meaning. */
   async function showRewriteMeter(source, result, rounds) {
     const meter = $("rewrite-meter");
     meter.hidden = true;
+    const parts = [];
     try {
       const [a, b] = await Promise.all([
         Engine.call("zhStyleScore", { text: source }),
         Engine.call("zhStyleScore", { text: result }),
       ]);
-      if (a.report.status !== "ok" || b.report.status !== "ok") return;
-      if (outputEl.textContent !== source) return;   // the input moved on while we scored
-      meter.textContent = t("rewriteMeter", {
-        before: a.report.score.toFixed(2), after: b.report.score.toFixed(2),
-        hitsBefore: zhHits(a.report), hitsAfter: zhHits(b.report), rounds,
-      });
-      meter.hidden = false;
-    } catch (_) { /* engine unavailable: no meter, the rewrite itself stands */ }
+      if (a.report.status === "ok" && b.report.status === "ok") {
+        parts.push(t("rewriteMeter", {
+          before: a.report.score.toFixed(2), after: b.report.score.toFixed(2),
+          hitsBefore: zhHits(a.report), hitsAfter: zhHits(b.report), rounds,
+        }));
+      }
+    } catch (_) { /* engine unavailable: no zh-style half */ }
+    /* The re-check loop optimises the zh-style meter itself, so its drop is
+     * not evidence. Fast-DetectGPT never sees that loop: it is the independent half. */
+    if (insp.stat.enabled && insp.stat.detectors.includes("fast-detectgpt")) {
+      try {
+        const fdg = async (s) => ((await WmApi.statDetect(s, { detectors: ["fast-detectgpt"] })).results || [])[0] || {};
+        const [a, b] = await Promise.all([fdg(source), fdg(result)]);
+        if (typeof a.score === "number" && typeof b.score === "number") {
+          parts.push(t("rewriteMeterFdg", { before: a.score.toFixed(2), after: b.score.toFixed(2), threshold: a.threshold }));
+        }
+      } catch (_) { /* sidecar down: the rewrite itself stands */ }
+    }
+    if (!parts.length || outputEl.textContent !== source) return;   // nothing to show, or the input moved on
+    meter.textContent = parts.join(" ");
+    meter.hidden = false;
   }
 
   function setRewriteBusy(on) {

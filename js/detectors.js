@@ -343,7 +343,7 @@
 
   // Local statistical sidecar (sidecar/unmark_stat.py behind serve_local.py's
   // /stat proxy). One POST scores every sidecar detector; the rows share it.
-  const SIDECAR_IDS = ["kgw", "synthid-text"];
+  const SIDECAR_IDS = ["kgw", "synthid-text", "fast-detectgpt"];
   async function sidecarResults(input, ctx, cache) {
     if (!cache.sidecar) {
       cache.sidecar = (async () => {
@@ -356,28 +356,40 @@
     }
     return cache.sidecar;
   }
-  for (const id of SIDECAR_IDS) {
+  async function sidecarRow(def, input, ctx, cache) {
+    const stat = ctx.stat || {};
+    if (!stat.enabled) return result(def, { status: "unavailable", noteKey: "inspect.noteNoSidecar" });
+    if (!(stat.detectors || []).includes(def.id)) return result(def, { status: "unavailable", noteKey: "inspect.noteDetectorOff" });
+    const all = await sidecarResults(input, ctx, cache);
+    const r = all[def.id];
+    if (!r) return result(def, { status: "error", note: "sidecar returned no result for " + def.id });
+    return result(def, {
+      status: r.status, confidence: r.confidence == null ? null : r.confidence, score: r.score == null ? null : r.score,
+      threshold: r.threshold == null ? null : r.threshold,
+      evidence: Array.isArray(r.evidence) ? r.evidence.map((e) => ({ label: String(e.label), detail: String(e.detail) })) : [],
+      note: r.note || null,
+      meta: def.requires_key ? Object.assign({}, r.meta || {}, { key_profile: stat.keyProfile || "a" }) : Object.assign({}, r.meta || {}),
+    });
+  }
+  for (const id of ["kgw", "synthid-text"]) {
     register({
       id, layer: "statistical", requires_key: true, requires_model: true,
       applies: isText,
-      async run(input, ctx, cache) {
-        const def = byId(id);
-        const stat = ctx.stat || {};
-        if (!stat.enabled) return result(def, { status: "unavailable", noteKey: "inspect.noteNoSidecar" });
-        if (!(stat.detectors || []).includes(id)) return result(def, { status: "unavailable", noteKey: "inspect.noteDetectorOff" });
-        const all = await sidecarResults(input, ctx, cache);
-        const r = all[id];
-        if (!r) return result(def, { status: "error", note: "sidecar returned no result for " + id });
-        const out = result(def, {
-          status: r.status, confidence: r.confidence == null ? null : r.confidence, score: r.score == null ? null : r.score,
-          threshold: r.threshold == null ? null : r.threshold,
-          evidence: Array.isArray(r.evidence) ? r.evidence.map((e) => ({ label: String(e.label), detail: String(e.detail) })) : [],
-          note: r.note || null, meta: Object.assign({}, r.meta || {}, { key_profile: stat.keyProfile || "a" }),
-        });
-        return out;
-      },
+      run: (input, ctx, cache) => sidecarRow(byId(id), input, ctx, cache),
     });
   }
+  /* Fast-DetectGPT rides the same sidecar call but is keyless and not a
+   * watermark: a zero-shot score of how unsurprising the text is to a small
+   * base/instruct model pair. Heuristic, so it never moves the watermark verdict. */
+  register({
+    id: "fast-detectgpt", layer: "statistical", heuristic: true, requires_model: true,
+    applies: isText,
+    async run(input, ctx, cache) {
+      const r = await sidecarRow(byId("fast-detectgpt"), input, ctx, cache);
+      if (!r.note && !r.noteKey) r.noteKey = "inspect.noteFastDetectGpt";   // keep the sidecar's "too short"
+      return r;
+    },
+  });
 
   // Upstream watermarks-remover server: POST /detect when the configured
   // service advertises text detectors (MarkLLM harness, vendor seams).
