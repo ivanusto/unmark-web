@@ -2,3 +2,6 @@
 __pycache__/
 .pytest_cache/
 node_modules/
+
+# Claude Code per-user permissions (may contain secrets)
+.claude/settings.local.json
